@@ -1,5 +1,6 @@
-# Import Dependencies
+#!/usr/bin/env python3
 
+# Import Dependencies
 import colorama
 import os
 
