@@ -4,8 +4,19 @@ import colorama
 import os
 
 # Define Parameters
+commands = {
+    # "command" :   "description"
+    "help"      :   "Displays this Message",
+    "clear"     :   "Clears the Shell",
+    "convert"   :   "Converts a video to a png sequence",
+    "compress"  :   "Compresses a video/png sequence",
+    "build"     :   "Build the Bootanimation",
+    "preview"   :   "Renders a png sequence into a video",
+    "exit"      :   "Exit the Program"
+    }
 
-commands = ("exit", "help", "clear", "compress", "convert", "build", "preview")
+cmd = list(commands)
+val = list(commands.values())
 
 clearConsole = lambda: os.system('cls' if os.name in ('nt', 'dos') else 'clear')
 def figlet():
@@ -27,28 +38,21 @@ def shell():
         else:
             shellIn = shellIn[0]
 
-        if shellIn in commands:
+        if shellIn in cmd:
             pass
         else:
             print(colorama.Fore.RED + shellIn + ": Command not found." + colorama.Fore.RESET)
 
-        if shellIn == commands[0]:
-            clearConsole()
-            break   
-        elif shellIn == commands[1]:
+        if shellIn == cmd[0]:
             print(colorama.Fore.MAGENTA + colorama.Style.BRIGHT + ' Avaliable Executables:' + colorama.Style.RESET_ALL)
-            print('''
-    help - Displays this message
-    convert - Converts a video to a png sequence
-    compress - Compresses a video/png sequence
-    build - Makes a bootanimation
-    preview - Renders a png sequence into a video
-    exit - Exits the program
-    clear - Clears the console
-            ''')
-        elif shellIn == commands[2]:
+            for i in range(len(commands)):
+                print (f"  {i+1}. {cmd[i]} - {val[i]}")
+        elif shellIn == cmd[1]:
             clearConsole()
             figlet()
+        elif shellIn == cmd[6]:
+            clearConsole()
+            break
 
     return shellIn
 
