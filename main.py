@@ -6,6 +6,7 @@ import cv2
 from os import system as run, name as osName, mkdir, path as ospath, chdir as cd, remove as rm, listdir as ls
 from random import randint
 from PIL import Image
+from shutil import get_terminal_size
 
 # Define Parameters
 commands = {
@@ -17,11 +18,24 @@ commands = {
     "compress"  :   "Compresses a video/PNG sequence",
     "build"     :   "Build the Bootanimation",
     "preview"   :   "Renders a png sequence into a video",
-    "exit"      :   "Exit the Program"
+    "exit"      :   "Exit the Program",
+    "bot"       :   "Run the MercuryX Bot on Telegram"
     }
 
 cmd = list(commands)
 val = list(commands.values())
+clearlast = " " * get_terminal_size().columns
+
+class OverwriteLast:
+    def __init__(self):
+        self.last = 0
+    def print(self,s):
+        if self.last:
+            print(' '*self.last, end='\r')
+        self.last = len(s)
+        print(s, end='\r')
+
+over = OverwriteLast()
 
 clearConsole = lambda: run('cls' if osName in ('nt', 'dos') else 'clear')
 def figlet():
@@ -47,24 +61,34 @@ def convert():
         exit()
 
     vidcap = cv2.VideoCapture(pathIn)
+    frame_count = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
     success,image = vidcap.read()
     count = 0
     success = True
+    print(" ")
     while success:
         success,image = vidcap.read()
         if success is False:
             break
         cv2.imwrite(pathOut + "\\part%d.jpg" % count, image)
-        count += 1        
+        count += 1
+        print(f" Extracted: {count}/{frame_count} Frames", end='\r')
+    print(clearlast, end="\r")
+    vidcap.release()
 
+    count = 0
     files_in_directory = ls(pathOut)
     filtered_files = [file for file in files_in_directory if file.endswith(".jpg")]
     for file in filtered_files:
         path_to_file = ospath.join(pathOut, file)
         Image.open(path_to_file).save(ospath.join(pathOut, ospath.splitext(path_to_file)[0]) + '.png', format="png")
         rm(path_to_file)
+        count += 1
+        print(f" Converted: {count}/{frame_count} Files", end='\r')
+    print (clearlast, end="\r")
 
-    print("\n" + colorama.Fore.CYAN + colorama.Style.DIM + f" PNG Sequence created in {pathOut}" + colorama.Style.RESET_ALL + "\n")
+    print(colorama.Fore.CYAN + colorama.Style.DIM + f" PNG Sequence created in {pathOut}" + colorama.Style.RESET_ALL, end="\r")
+    print(" ")
 
 def shell():
     cmdcount = 0
