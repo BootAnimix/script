@@ -67,8 +67,6 @@ def convert():
     print("\n" + colorama.Fore.CYAN + colorama.Style.DIM + f" PNG Sequence created in {pathOut}" + colorama.Style.RESET_ALL + "\n")
 
 def shell():
-    clearConsole()
-    figlet()
     while True:
         shellIn = input(" BootAnimix > ").lower().split()
         
@@ -104,6 +102,7 @@ def shell():
 
 # Initiate The process
 colorama.init()
-
-print("Welcome to BootAnimix Shell, Type 'help' for more information")
+clearConsole()
+figlet()
+print(colorama.Fore.BLUE + colorama.Style.BRIGHT + " Welcome to BootAnimix Shell, Type 'help' for more information" + "\n" + colorama.Style.RESET_ALL)
 shell()
