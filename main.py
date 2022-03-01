@@ -67,6 +67,7 @@ def convert():
     print("\n" + colorama.Fore.CYAN + colorama.Style.DIM + f" PNG Sequence created in {pathOut}" + colorama.Style.RESET_ALL + "\n")
 
 def shell():
+    cmdcount = 0
     while True:
         shellIn = input(" BootAnimix > ").lower().split()
         
@@ -81,6 +82,9 @@ def shell():
             print(colorama.Fore.RED + shellIn + ": Command not found." + colorama.Fore.RESET + "\n")
 
         if shellIn == cmd[0]:
+            if cmdcount == 0:
+                clearConsole()
+                figlet()
             print(colorama.Fore.MAGENTA + colorama.Style.BRIGHT + ' Avaliable Executables:' + colorama.Style.RESET_ALL + "\n")
             for i in range(len(commands)):
                 print (f"  {i+1}.  {cmd[i]} - {val[i]}")
@@ -97,6 +101,8 @@ def shell():
         elif shellIn == cmd[2]:
             print(colorama.Fore.MAGENTA + colorama.Style.BRIGHT + ' Convert Video to PNG Sequence' + colorama.Style.RESET_ALL + "\n")
             convert()
+
+        cmdcount += 1
 
     return shellIn
 
