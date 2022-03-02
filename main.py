@@ -6,7 +6,7 @@ import cv2
 from os import system as run, name as osName, mkdir, path as ospath, chdir as cd, remove as rm, listdir as ls
 from random import randint
 from PIL import Image
-from shutil import get_terminal_size
+from shutil import get_terminal_size, rmtree
 
 # Define Parameters
 commands = {
@@ -15,11 +15,11 @@ commands = {
     "help"      :   "Displays this Message",
     "clear"     :   "Clears the Shell",
     "convert"   :   "Converts a video to a PNG sequence",
-    "compress"  :   "Compresses a video/PNG sequence",
-    "build"     :   "Build the Bootanimation",
+    "build"     :   "Builds the Bootanimation",
     "preview"   :   "Renders a png sequence into a video",
     "exit"      :   "Exit the Program",
-    "bot"       :   "Run the MercuryX Bot on Telegram"
+    "bot"       :   "Run the MercuryX Bot on Telegram",
+    "buildx"    :   "Automatically Builds the Bootanimation"
     }
 
 cmd = list(commands)
@@ -52,6 +52,8 @@ def convert():
 
     if ospath.exists(pathOut) is True:
         pathOut = pathOut + str(randint(0, 100000))
+        if ospath.exists(pathOut) is True:
+            rmtree(pathOut) 
         mkdir(pathOut)
         cd(pathOut)
     elif ospath.exists(pathOut) is False:
@@ -81,14 +83,14 @@ def convert():
     filtered_files = [file for file in files_in_directory if file.endswith(".jpg")]
     for file in filtered_files:
         path_to_file = ospath.join(pathOut, file)
-        Image.open(path_to_file).save(ospath.join(pathOut, ospath.splitext(path_to_file)[0]) + '.png', format="png")
+        Image.open(path_to_file).save(ospath.join(pathOut, ospath.splitext(path_to_file)[0]) + '.png', format="png", compress_level=9)
         rm(path_to_file)
         count += 1
         print(f" Converted: {count}/{frame_count} Files", end='\r')
     print (clearlast, end="\r")
 
     print(colorama.Fore.CYAN + colorama.Style.DIM + f" PNG Sequence created in {pathOut}" + colorama.Style.RESET_ALL, end="\r")
-    print(" ")
+    print("\n")
 
 def shell():
     cmdcount = 0
