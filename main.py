@@ -24,20 +24,11 @@ commands = {
 
 cmd = list(commands)
 val = list(commands.values())
-clearlast = " " * get_terminal_size().columns
 
-class OverwriteLast:
-    def __init__(self):
-        self.last = 0
-    def print(self,s):
-        if self.last:
-            print(' '*self.last, end='\r')
-        self.last = len(s)
-        print(s, end='\r')
+spaceline = " " * get_terminal_size().columns # A string full of spaces
+clearConsole = lambda: run('cls' if osName in ('nt', 'dos') else 'clear') # Native Clear Function
 
-over = OverwriteLast()
-
-clearConsole = lambda: run('cls' if osName in ('nt', 'dos') else 'clear')
+# Art
 def figlet():
     print(colorama.Fore.BLUE +    "  ____              _      _          _           _       ")
     print(colorama.Fore.GREEN +   " | __ )  ___   ___ | |_   / \   _ __ (_)_ __ ___ (_)_  __ ")
@@ -46,10 +37,13 @@ def figlet():
     print(colorama.Fore.RED +     " |____/ \___/ \___/ \__/_/   \_\_| |_|_|_| |_| |_|_/_/\_\ ")
     print(colorama.Fore.RESET +   " ")
 
+# Convert Video to PNG Sequence
 def convert():
+    # Collect Paths
     pathIn = input(" Enter the path of the video: ")
     pathOut = ospath.join(ospath.dirname(pathIn), ospath.splitext(pathIn)[0])
 
+    # Initiate Outcomes
     if ospath.exists(pathOut) is True:
         pathOut = pathOut + str(randint(0, 100000))
         if ospath.exists(pathOut) is True:
@@ -62,6 +56,7 @@ def convert():
     else:
         exit()
 
+    # Convert Video to JPG Sequence
     vidcap = cv2.VideoCapture(pathIn)
     frame_count = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
     success,image = vidcap.read()
@@ -75,9 +70,10 @@ def convert():
         cv2.imwrite(pathOut + "\\part%d.jpg" % count, image)
         count += 1
         print(f" Extracted: {count}/{frame_count} Frames", end='\r')
-    print(clearlast, end="\r")
+    print(spaceline, end="\r")
     vidcap.release()
 
+    # Convert JPG Sequence to PNG Sequence
     count = 0
     files_in_directory = ls(pathOut)
     filtered_files = [file for file in files_in_directory if file.endswith(".jpg")]
@@ -87,26 +83,31 @@ def convert():
         rm(path_to_file)
         count += 1
         print(f" Converted: {count}/{frame_count} Files", end='\r')
-    print (clearlast, end="\r")
+    print (spaceline, end="\r")
 
+    # Print and Exit
     print(colorama.Fore.CYAN + colorama.Style.DIM + f" PNG Sequence created in {pathOut}" + colorama.Style.RESET_ALL, end="\r")
     print("\n")
 
+# Initiate Main Shell
 def shell():
-    cmdcount = 0
-    while True:
-        shellIn = input(" BootAnimix > ").lower().split()
+    cmdcount = 0 # Initialise Command Counter
+    while True: # Loop Shell Input
+        shellIn = input(" BootAnimix > ").lower().split() # Initialise Shell Input
         
+        # Check for empty input
         if shellIn == []:
             continue
         else:
             shellIn = shellIn[0]
 
+        # Check for valid commands
         if shellIn in cmd:
             pass
         else:
             print(colorama.Fore.RED + shellIn + ": Command not found." + colorama.Fore.RESET + "\n")
 
+        # Check for help command
         if shellIn == cmd[0]:
             if cmdcount == 0:
                 clearConsole()
@@ -116,25 +117,26 @@ def shell():
                 print (f"  {i+1}.  {cmd[i]} - {val[i]}")
             print("") # Blank padding
 
+        # Check for clear command
         elif shellIn == cmd[1]:
             clearConsole()
             figlet()
 
+        # Check for exit command
         elif shellIn == cmd[6]:
             clearConsole()
             break
 
+        # Check for convert command
         elif shellIn == cmd[2]:
             print(colorama.Fore.MAGENTA + colorama.Style.BRIGHT + ' Convert Video to PNG Sequence' + colorama.Style.RESET_ALL + "\n")
             convert()
 
-        cmdcount += 1
-
-    return shellIn
+        cmdcount += 1 # Increment Command Counter
 
 # Initiate The process
-colorama.init()
-clearConsole()
-figlet()
-print(colorama.Fore.BLUE + colorama.Style.BRIGHT + " Welcome to BootAnimix Shell, Type 'help' for more information" + "\n" + colorama.Style.RESET_ALL)
-shell()
+colorama.init() # Initialise Colorama
+clearConsole() # Clear Console
+figlet() # Print Figlet
+print(colorama.Fore.BLUE + colorama.Style.BRIGHT + " Welcome to BootAnimix Shell, Type 'help' for more information" + "\n" + colorama.Style.RESET_ALL) # Print Welcome Message
+shell() # Run Shell
