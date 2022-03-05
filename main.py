@@ -22,8 +22,8 @@ commands = {
     "buildx"    :   "Automatically Builds the Bootanimation"
     }
 
-cmd = list(commands)
-val = list(commands.values())
+cmd = list(commands) # Initialise Command List
+val = list(commands.values()) # Description
 
 spaceline = " " * get_terminal_size().columns # A string full of spaces
 clearConsole = lambda: run('cls' if osName in ('nt', 'dos') else 'clear') # Native Clear Function
@@ -123,7 +123,7 @@ def shell():
             figlet()
 
         # Check for exit command
-        elif shellIn == cmd[6]:
+        elif shellIn == cmd[5]:
             clearConsole()
             break
 
