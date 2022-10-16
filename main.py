@@ -105,7 +105,7 @@ def shell():
         if shellIn in cmd:
             pass
         else:
-            print(colorama.Fore.RED + shellIn + ": Command not found." + colorama.Fore.RESET + "\n")
+            print(colorama.Fore.RED + " " + shellIn + ": Command not found." + colorama.Fore.RESET + "\n")
 
         # Check for help command
         if shellIn == cmd[0]:
