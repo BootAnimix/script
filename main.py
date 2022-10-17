@@ -62,6 +62,7 @@ def convert():
     success,image = vidcap.read()
     count = 0
     success = True
+    print(" ")
     while success:
         success,image = vidcap.read()
         zcount = str(count).zfill(len(str(frame_count)))
