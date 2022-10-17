@@ -62,12 +62,12 @@ def convert():
     success,image = vidcap.read()
     count = 0
     success = True
-    print(" ")
     while success:
         success,image = vidcap.read()
+        zcount = str(count).zfill(len(str(frame_count)))
         if success is False:
-            break
-        cv2.imwrite(pathOut + "\\part%d.jpg" % count, image)
+          break
+        cv2.imwrite(ospath.join(pathOut, f"part{zcount}.jpg"), image)
         count += 1
         print(f" Extracted: {count}/{frame_count} Frames", end='\r')
     print(spaceline, end="\r")
