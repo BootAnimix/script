@@ -14,12 +14,8 @@ commands = {
 
     "help"      :   "Displays this Message",
     "clear"     :   "Clears the Shell",
-    "convert"   :   "Converts a video to a PNG sequence",
-    "build"     :   "Builds the Bootanimation",
-    "preview"   :   "Renders a png sequence into a video",
+    "convert"   :   "Converts a video to a JPG sequence",
     "exit"      :   "Exit the Program",
-    "bot"       :   "Run the MercuryX Bot on Telegram",
-    "buildx"    :   "Automatically Builds the Bootanimation"
     }
 
 cmd = list(commands) # Initialise Command List
@@ -74,20 +70,8 @@ def convert():
     print(spaceline, end="\r")
     vidcap.release()
 
-    # Convert JPG Sequence to PNG Sequence
-    count = 0
-    files_in_directory = ls(pathOut)
-    filtered_files = [file for file in files_in_directory if file.endswith(".jpg")]
-    for file in filtered_files:
-        path_to_file = ospath.join(pathOut, file)
-        Image.open(path_to_file).save(ospath.join(pathOut, ospath.splitext(path_to_file)[0]) + '.png', format="png", compress_level=9)
-        rm(path_to_file)
-        count += 1
-        print(f" Converted: {count}/{frame_count} Files", end='\r')
-    print (spaceline, end="\r")
-
     # Print and Exit
-    print(colorama.Fore.CYAN + colorama.Style.DIM + f" PNG Sequence created in {pathOut}" + colorama.Style.RESET_ALL, end="\r")
+    print(colorama.Fore.CYAN + colorama.Style.DIM + f" JPG Sequence created in {pathOut}" + colorama.Style.RESET_ALL, end="\r")
     print("\n")
 
 # Initiate Main Shell
@@ -130,7 +114,7 @@ def shell():
 
         # Check for convert command
         elif shellIn == cmd[2]:
-            print(colorama.Fore.MAGENTA + colorama.Style.BRIGHT + ' Convert Video to PNG Sequence' + colorama.Style.RESET_ALL + "\n")
+            print(colorama.Fore.MAGENTA + colorama.Style.BRIGHT + ' Convert Video to JPG Sequence' + colorama.Style.RESET_ALL + "\n")
             convert()
 
         cmdcount += 1 # Increment Command Counter
