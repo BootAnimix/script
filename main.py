@@ -108,7 +108,7 @@ def shell():
             figlet()
 
         # Check for exit command
-        elif shellIn == cmd[5]:
+        elif shellIn == cmd[3]:
             clearConsole()
             break
 
