@@ -1,12 +1,9 @@
-#!/usr/bin/env python3
-
 # Import Dependencies
 import colorama
 import cv2
 from os import system as run, name as osName, mkdir, path as ospath, chdir as cd
 from random import randint
-from shutil import get_terminal_size, rmtree
-import tkinter.filedialog as filedialog
+from shutil import get_terminal_size
 
 # Define Parameters
 commands = {
@@ -40,6 +37,8 @@ def convert(nogui):
     if nogui:
         pathIn = input(" Enter the path of the video: ")
     else:
+        import tkinter.filedialog as filedialog
+        
         filetypes = [("Video Files", "*.mp4;*.avi;*.mkv;*.mov;*.wmv")]
         pathIn = filedialog.askopenfilename(filetypes=filetypes)
         if not pathIn:
