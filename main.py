@@ -7,8 +7,6 @@ from shutil import get_terminal_size
 
 # Define Parameters
 commands = {
-    # "command"     :   "description"
-
     "help"          :   "Displays this Message",
     "clear"         :   "Clears the Shell",
     "convert"       :   "Converts a video to a JPG sequence",
@@ -16,9 +14,9 @@ commands = {
     "exit"          :   "Exit the Program",
     }
 
-cmd = list(commands) # Initialise Command List
-val = list(commands.values()) # Description
-clearConsole = lambda: run('cls' if osName in ('nt', 'dos') else 'clear') # Native Clear Function
+cmd = list(commands)
+val = list(commands.values())
+clearConsole = lambda: run('cls' if osName in ('nt', 'dos') else 'clear')
 
 def spaceline():
     return " " * get_terminal_size().columns
@@ -38,7 +36,7 @@ def convert(nogui):
         pathIn = input(" Enter the path of the video: ")
     else:
         import tkinter.filedialog as filedialog
-        
+
         filetypes = [("Video Files", "*.mp4;*.avi;*.mkv;*.mov;*.wmv")]
         pathIn = filedialog.askopenfilename(filetypes=filetypes)
         if not pathIn:
@@ -62,6 +60,9 @@ def convert(nogui):
     count = 0
     success = True
 
+    # Get Resolution
+    height, width, layers = image.shape
+
     if nogui:
         print(" ")
 
@@ -70,11 +71,54 @@ def convert(nogui):
         zcount = str(count).zfill(len(str(frame_count)))
 
         if not success:
-          break
+            break
 
+        # Extract frames for 1440p resolution
+        pathOut1440p = ospath.join(ospath.dirname(pathIn), ospath.splitext(pathIn)[0] + "_1440p")
+        if ospath.exists(pathOut1440p):
+            pass
+        else:
+            mkdir(pathOut1440p)
+            cd(pathOut1440p)
+        image1440p = cv2.resize(image, (1440, 2560))
+        cv2.imwrite(ospath.join(pathOut1440p, f"part{zcount}.jpg"), image1440p)
+
+        # Extract frames for 1080p resolution
+        pathOut1080p = ospath.join(ospath.dirname(pathIn), ospath.splitext(pathIn)[0] + "_1080p")
+        if ospath.exists(pathOut1080p):
+            pass
+        else:
+            mkdir(pathOut1080p)
+            cd(pathOut1080p)
+        image1080p = cv2.resize(image, (1080, 1920))
+        cv2.imwrite(ospath.join(pathOut1080p, f"part{zcount}.jpg"), image1080p)
+
+        # Extract frames for 720p resolution
+        pathOut720p = ospath.join(ospath.dirname(pathIn), ospath.splitext(pathIn)[0] + "_720p")
+        if ospath.exists(pathOut720p):
+            pass
+        else:
+            mkdir(pathOut720p)
+            cd(pathOut720p)
+        if count % 2 == 0:
+            image720p = cv2.resize(image, (720, 1280))
+            cv2.imwrite(ospath.join(pathOut720p, f"part{str(int(count/2)).zfill(len(str(frame_count)))}.jpg"), image720p)
+
+        # Extract frames for Original resolution
+        pathOut = ospath.join(ospath.dirname(pathIn), ospath.splitext(pathIn)[0])
+        if ospath.exists(pathOut):
+            pass
+        else:
+            mkdir(pathOut)
+            cd(pathOut)
         cv2.imwrite(ospath.join(pathOut, f"part{zcount}.jpg"), image)
+
         count += 1
         print(f" Extracted: {count}/{frame_count} Frames", end='\r')
+
+    # Print and Exit
+    print(colorama.Fore.CYAN + colorama.Style.DIM + f" JPG Sequences created in {pathOut1440p}, {pathOut1080p}, and {pathOut720p}" + colorama.Style.RESET_ALL, end="\r")
+    print("\n")
 
     print(spaceline(), end="\r")
     vidcap.release()

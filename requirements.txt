@@ -1,3 +1,2 @@
-colorama
-pillow
 opencv-python
+tqdm
