@@ -30,10 +30,13 @@ Welcome to **BootAnimix**, a delightful Python-based application for transformin
 
 1. Clone or download this repository.
 2. Navigate to the project folder in your terminal:
+
    ```bash
    cd bootanimix
    ```
+
 3. Install the required dependencies:
+
    ```bash
    pip install -r requirements.txt
    ```
@@ -43,9 +46,11 @@ Welcome to **BootAnimix**, a delightful Python-based application for transformin
 ## Quick Start
 
 1. Run the main application:
+
    ```bash
    python main.py
    ```
+
 2. Type in any command listed below, or simply type **help** to see them all.
 
 ---
