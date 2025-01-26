@@ -1,2 +1,4 @@
-opencv-python
-tqdm
+rich
+pillow
+moviepy
+numpy
