@@ -422,7 +422,7 @@ def main():
     a welcome message, and handles user commands in a loop.
     """
     clear_screen()
-    console.print("[bold magenta]Boot Animation Creator[/]", justify="center")
+    console.print("[bold magenta]Boot Animation Creator[/]\n", justify="center")
     console.print("Type 'help' for available commands\n")
 
     handlers = {
