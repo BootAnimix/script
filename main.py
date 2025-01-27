@@ -43,6 +43,7 @@ def show_help():
         ("help", "Show this help message"),
         ("getinfo", "Get video file information"),
         ("vid2jpg", "Convert video to JPG sequence"),
+        ("pic2jpg", "Convert images in folder to JPG format (supports sections)"),
         ("zip2vid", "Convert bootanimation ZIP to video"),
         ("resize", "Resize video while preserving aspect ratio"),
         ("sort", "Organize JPG sequence into sections"),
@@ -257,6 +258,17 @@ def handle_sort():
         error_console.print(f"Error: {e}")
 
 
+def get_section_names(folder: Path) -> list:
+    """Extract section names from desc.txt"""
+    try:
+        with open(folder / "desc.txt") as f:
+            # Skip first line (resolution info)
+            lines = f.read().splitlines()[1:]
+            return [line.split()[-1] for line in lines if line.strip()]
+    except Exception as e:
+        raise RuntimeError(f"Error reading desc.txt: {e}")
+
+
 def handle_unsort():
     """
     Prompt for a folder containing sorted JPG sections.
@@ -266,13 +278,26 @@ def handle_unsort():
     folder = Path(folder)
 
     try:
-        for subdir in folder.iterdir():
-            if subdir.is_dir() and subdir.name.startswith("S"):
-                for file in subdir.iterdir():
-                    if file.suffix == ".jpg":
-                        dest = folder / file.name
-                        file.rename(dest)
-                subdir.rmdir()
+        sections = get_section_names(folder)
+
+        for section in sections:
+            section_dir = folder / section
+            if not section_dir.exists():
+                error_console.print(
+                    f"Warning: Section folder {section} not found, skipping"
+                )
+                continue
+
+            for file in section_dir.iterdir():
+                if file.suffix == ".jpg":
+                    dest = folder / file.name
+                    if dest.exists():
+                        error_console.print(
+                            f"Conflict: {file.name} exists in main folder! Aborting."
+                        )
+                        return
+                    file.rename(dest)
+            section_dir.rmdir()
 
         console.print("[green]Unsort completed successfully![/]")
     except Exception as e:
@@ -319,6 +344,69 @@ def handle_uncompress():
         error_console.print(f"Error: {e}")
 
 
+def handle_pic2jpg():
+    """
+    Convert all non-JPG images in a bootanimation folder (including subdirectories)
+    to JPG format, preserving directory structure and filenames.
+    """
+    folder = Prompt.ask("Enter bootanimation folder path", console=console)
+    folder = Path(folder)
+
+    if not folder.exists() or not folder.is_dir():
+        error_console.print("Invalid folder path!")
+        return
+
+    supported_extensions = (".png", ".jpeg", ".bmp", ".gif", ".webp")
+    image_paths = []
+    for img_path in folder.rglob("*"):
+        if img_path.is_file() and img_path.suffix.lower() in supported_extensions:
+            image_paths.append(img_path)
+
+    total_files = len(image_paths)
+    if total_files == 0:
+        console.print("[yellow]No convertible image files found.[/]")
+        return
+
+    converted = 0
+    errors = 0
+
+    with Progress(
+        "[progress.description]{task.description}",
+        BarColumn(),
+        "[progress.percentage]{task.percentage:>3.0f}%",
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("[cyan]Converting images...", total=total_files)
+
+        for img_path in image_paths:
+            try:
+                new_path = img_path.with_suffix(".jpg")
+                if new_path.exists():
+                    error_console.print(
+                        f"Warning: {new_path} already exists, skipping."
+                    )
+                    errors += 1
+                    progress.update(task, advance=1)
+                    continue
+
+                with Image.open(img_path) as img:
+                    rgb_img = img.convert("RGB")
+                    rgb_img.save(new_path, quality=100, optimize=False)
+
+                img_path.unlink()  # Delete original file
+                converted += 1
+            except Exception as e:
+                error_console.print(f"Error converting {img_path}: {e}")
+                errors += 1
+            finally:
+                progress.update(task, advance=1)
+
+    console.print(f"[green]Conversion complete![/] Converted {converted} images.")
+    if errors > 0:
+        error_console.print(f"Encountered {errors} errors during conversion.")
+
+
 def handle_zip2vid():
     """
     Convert a bootanimation ZIP to a video by extracting
@@ -341,17 +429,24 @@ def handle_zip2vid():
     folder = Path(output_folder)
 
     try:
-        section_dirs = [
-            d for d in folder.iterdir() if d.is_dir() and d.name.startswith("S")
-        ]
-        if section_dirs:
+        # Get sections from desc.txt
+        sections = get_section_names(folder)
+
+        if sections:
             console.print("[yellow]Found sorted sections, unsorting...[/]")
-            for section_dir in section_dirs:
+            for section in sections:
+                section_dir = folder / section
+                if not section_dir.exists():
+                    error_console.print(
+                        f"Warning: Section folder {section} missing, skipping"
+                    )
+                    continue
+
                 for img_file in section_dir.glob("*.jpg"):
                     dest = folder / img_file.name
                     if dest.exists():
                         error_console.print(
-                            f"Conflict: {img_file.name} already exists in main folder!"
+                            f"Conflict: {img_file.name} already exists! Aborting."
                         )
                         return
                     img_file.rename(dest)
@@ -428,6 +523,7 @@ def main():
     handlers = {
         "help": show_help,
         "getinfo": handle_getinfo,
+        "pic2jpg": handle_pic2jpg,
         "vid2jpg": handle_vid2jpg,
         "resize": handle_resize,
         "sort": handle_sort,

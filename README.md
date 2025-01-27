@@ -29,6 +29,7 @@ Welcome to **BootAnimix**, a delightful Python-based application for transformin
 ## Installation
 
 1. Clone or download this repository.
+
 2. Navigate to the project folder in your terminal:
 
    ```bash
@@ -40,6 +41,12 @@ Welcome to **BootAnimix**, a delightful Python-based application for transformin
    ```bash
    pip install -r requirements.txt
    ```
+
+Termux Installation (Single step):
+
+```bash
+pkg update; pkg upgrade -y; pkg install python-numpy python-pillow ffmpeg git python uv -y; git clone https://github.com/bootanimix/script; cd script; uv pip install -r requirements.txt --system; uv run main.py
+```
 
 ---
 
