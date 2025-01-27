@@ -61,8 +61,7 @@ def show_help():
 
 def get_video_info(file_path: Path) -> dict:
     """
-    Retrieve information about a video file, including
-    duration, FPS, width, and height.
+    Retrieve information about a video file, including duration, FPS, width, and height.
 
     :param file_path: Path object pointing to the video file.
     :return: Dictionary containing video metadata.
@@ -153,8 +152,7 @@ def handle_vid2jpg():
 
 def handle_resize():
     """
-    Prompt for a video file path, dimension type (width/height),
-    and resize the video accordingly.
+    Prompt for a video file path, dimension type (width/height), and resize the video accordingly.
     """
     file_path = Prompt.ask("Enter video file path", console=console)
     if not Path(file_path).exists():
@@ -189,8 +187,7 @@ def handle_resize():
 
 def detect_prefix(folder: Path) -> Tuple[str, int]:
     """
-    Detect the file prefix and digit count for a sequence of JPG files
-    in a given folder.
+    Detect the file prefix and digit count for a sequence of JPG files in a given folder.
 
     :param folder: Path to the folder containing JPG files.
     :return: A tuple of (prefix, digit_count).
@@ -207,8 +204,7 @@ def detect_prefix(folder: Path) -> Tuple[str, int]:
 
 def handle_sort():
     """
-    Prompt for a folder containing a JPG sequence. Sort images
-    into sections, updating desc.txt with the new sections.
+    Prompt for a folder containing a JPG sequence. Sort images into sections, updating desc.txt with the new sections.
     """
     folder = Prompt.ask("Enter JPG sequence folder", console=console)
     folder = Path(folder)
@@ -271,8 +267,7 @@ def get_section_names(folder: Path) -> list:
 
 def handle_unsort():
     """
-    Prompt for a folder containing sorted JPG sections.
-    Move files back to the main folder and remove section dirs.
+    Prompt for a folder containing sorted JPG sections. Move files back to the main folder and remove section dirs.
     """
     folder = Prompt.ask("Enter sorted folder", console=console)
     folder = Path(folder)
@@ -306,8 +301,7 @@ def handle_unsort():
 
 def handle_compress():
     """
-    Prompt for a folder and compress it into a ZIP file
-    using the ZIP_STORED compression mode.
+    Prompt for a folder and compress it into a ZIP file using the ZIP_STORED compression mode.
     """
     folder = Prompt.ask("Enter folder to compress", console=console)
     folder = Path(folder)
@@ -346,8 +340,7 @@ def handle_uncompress():
 
 def handle_pic2jpg():
     """
-    Convert all non-JPG images in a bootanimation folder (including subdirectories)
-    to JPG format, preserving directory structure and filenames.
+    Convert all non-JPG images in a bootanimation folder (including subdirectories) to JPG format, preserving directory structure and filenames.
     """
     folder = Prompt.ask("Enter bootanimation folder path", console=console)
     folder = Path(folder)
@@ -409,8 +402,7 @@ def handle_pic2jpg():
 
 def handle_zip2vid():
     """
-    Convert a bootanimation ZIP to a video by extracting
-    JPG frames and creating a final MP4 file.
+    Convert a bootanimation ZIP to a video by extracting JPG frames and creating a final MP4 file.
     """
     zip_file = Prompt.ask("Enter bootanimation ZIP path", console=console)
     if not Path(zip_file).exists():
@@ -513,8 +505,7 @@ def handle_zip2vid():
 
 def main():
     """
-    Main entry point for the application. Clears the screen, prints
-    a welcome message, and handles user commands in a loop.
+    Main entry point for the application. Clears the screen, prints a welcome message, and handles user commands in a loop.
     """
     clear_screen()
     console.print("[bold magenta]Boot Animation Creator[/]\n", justify="center")

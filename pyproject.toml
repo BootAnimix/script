@@ -1,0 +1,7 @@
+[project]
+name = "bootanimix"
+version = "3.1.0"
+description = "Making bootanimations easy!"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
