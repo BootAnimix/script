@@ -13,7 +13,7 @@ try:
     from rich.prompt import Prompt, Confirm
     from rich.table import Table
     from PIL import Image
-    import moviepy.editor as mpy
+    from moviepy import VideoFileClip, ImageSequenceClip
 except ImportError as e:
     print(
         f"Error: {e}\nPlease install requirements with: pip install -r requirements.txt"
@@ -67,7 +67,7 @@ def get_video_info(file_path: Path) -> dict:
     :return: Dictionary containing video metadata.
     """
     try:
-        with mpy.VideoFileClip(str(file_path)) as clip:
+        with VideoFileClip(str(file_path)) as clip:
             return {
                 "path": clip.filename,
                 "duration": clip.duration,
@@ -115,7 +115,7 @@ def handle_vid2jpg():
     output_dir.mkdir(exist_ok=True)
 
     try:
-        with mpy.VideoFileClip(str(file_path)) as clip:
+        with VideoFileClip(str(file_path)) as clip:
             fps = clip.fps
             duration = clip.duration
             total_frames = int(fps * duration)
@@ -165,7 +165,7 @@ def handle_resize():
     target = int(Prompt.ask(f"Enter target {dimension}", console=console))
 
     try:
-        with mpy.VideoFileClip(str(file_path)) as clip:
+        with VideoFileClip(str(file_path)) as clip:
             if dimension == "width":
                 new_height = int(target * clip.h / clip.w)
                 new_size = (target, new_height)
@@ -468,7 +468,7 @@ def handle_zip2vid():
     output_path = f"{folder.name}_converted.mp4"
     try:
         with console.status("[bold green]Preparing frames...[/]", spinner="dots"):
-            clip = mpy.ImageSequenceClip([str(img) for img in jpg_files], fps=fps)
+            clip = ImageSequenceClip([str(img) for img in jpg_files], fps=fps)
 
         with Progress(
             "[progress.description]{task.description}",
