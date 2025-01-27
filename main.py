@@ -260,7 +260,7 @@ def get_section_names(folder: Path) -> list:
         with open(folder / "desc.txt") as f:
             # Skip first line (resolution info)
             lines = f.read().splitlines()[1:]
-            return [line.split()[-1] for line in lines if line.strip()]
+            return [line.split()[3] for line in lines if line.strip()]
     except Exception as e:
         raise RuntimeError(f"Error reading desc.txt: {e}")
 
@@ -485,14 +485,13 @@ def handle_zip2vid():
                 progress.update(rendering_task, advance=1)
                 return gf(t)
 
-            clip = clip.fl(make_frame, apply_to=["video"])
+            clip = clip.transform(make_frame, apply_to=["video"])
             clip.write_videofile(
                 output_path,
+                threads=8,
                 codec="libx264",
                 fps=fps,
-                verbose=False,
                 logger=None,
-                threads=4,
             )
 
         console.print(
