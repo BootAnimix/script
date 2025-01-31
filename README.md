@@ -45,7 +45,7 @@ Welcome to **BootAnimix**, a delightful Python-based application for transformin
 Termux Installation (Single step):
 
 ```bash
-pkg update; pkg upgrade -y; pkg install git python -y; pkg install python-numpy python-pillow ffmpeg uv -y; git clone https://github.com/bootanimix/script; cd script; uv pip install -r requirements.txt --system; python main.py
+pkg update; pkg upgrade -y; pkg install git python -y; pkg install python-numpy python-pillow ffmpeg uv -y; git clone https://github.com/bootanimix/script; cd script; uv pip install -r requirements.txt --system
 ```
 
 ---

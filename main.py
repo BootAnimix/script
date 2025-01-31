@@ -163,6 +163,8 @@ def handle_resize():
         "Resize by (width/height)", choices=["width", "height"], console=console
     )
     target = int(Prompt.ask(f"Enter target {dimension}", console=console))
+    fps = Prompt.ask("Enter FPS (Leave empty for original)", default=None, console=console)
+    fps = int(fps) if fps else None
 
     try:
         with VideoFileClip(str(file_path)) as clip:
@@ -173,12 +175,12 @@ def handle_resize():
                 new_width = int(target * clip.w / clip.h)
                 new_size = (new_width, target)
 
-            resized = clip.resize(new_size)
+            resized = clip.resized(new_size)
             output_path = (
                 f"{Path(file_path).stem}_{new_size[0]}x{new_size[1]}"
                 f"{Path(file_path).suffix}"
             )
-            resized.write_videofile(output_path)
+            resized.write_videofile(output_path, fps=fps, logger=None)
 
             console.print(f"[green]Success![/] Resized video saved as {output_path}")
     except Exception as e:
@@ -493,6 +495,8 @@ def handle_zip2vid():
                 fps=fps,
                 logger=None,
             )
+
+        shutil.rmtree(folder)
 
         console.print(
             f"[green]Video created successfully![/]\nPath: [cyan]{output_path}[/]"
