@@ -1,0 +1,25 @@
+# Rust / Cargo
+/target/
+**/*.rs.bk
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Node / Frontend
+node_modules/
+apps/gui/dist/
+apps/gui/.svelte-kit/
+
+# Local workspace / IDE
+.freebuff/
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
