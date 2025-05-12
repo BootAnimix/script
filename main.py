@@ -112,6 +112,7 @@ def handle_vid2jpg():
         return
 
     output_dir = Path(Path(file_path).stem)
+    created_output_dir = not output_dir.exists()
     output_dir.mkdir(exist_ok=True)
 
     try:
@@ -141,13 +142,14 @@ def handle_vid2jpg():
                     )
                     progress.update(task, advance=1)
 
-            with open(output_dir / "desc.txt", "w") as f:
-                f.write(f"{clip.w} {clip.h} {int(fps)}")
+            with open(output_dir / "desc.txt", "w", newline="\n") as f:
+                f.write(f"{clip.w} {clip.h} {int(fps)}\n")
 
             console.print(f"[green]Success![/] JPG sequence created in {output_dir}/")
     except Exception as e:
         error_console.print(f"Error: {e}")
-        shutil.rmtree(output_dir, ignore_errors=True)
+        if created_output_dir:
+            shutil.rmtree(output_dir, ignore_errors=True)
 
 
 def handle_resize():
@@ -260,9 +262,16 @@ def get_section_names(folder: Path) -> list:
     """Extract section names from desc.txt"""
     try:
         with open(folder / "desc.txt") as f:
-            # Skip first line (resolution info)
             lines = f.read().splitlines()[1:]
-            return [line.split()[3] for line in lines if line.strip()]
+            names = []
+            for raw in lines:
+                line = raw.strip()
+                if not line or line.startswith("#") or line.startswith("dynamic_colors"):
+                    continue
+                parts = line.split()
+                if parts[0] in ("p", "c", "f") and len(parts) >= 4:
+                    names.append(parts[3])
+            return names
     except Exception as e:
         raise RuntimeError(f"Error reading desc.txt: {e}")
 
@@ -323,6 +332,20 @@ def handle_compress():
         error_console.print(f"Error: {e}")
 
 
+def _safe_extract_zip(zip_path: Path, target_dir: Path) -> None:
+    """Extract zip archive while rejecting path traversal outside target_dir."""
+    target_resolved = target_dir.resolve()
+    with zipfile.ZipFile(zip_path, "r") as zipf:
+        for member in zipf.infolist():
+            member_path = Path(member.filename)
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise ValueError(f"Unsafe zip entry path rejected: {member.filename}")
+            dest = (target_resolved / member_path).resolve()
+            if target_resolved != dest and target_resolved not in dest.parents:
+                raise ValueError(f"Unsafe zip entry escaping target dir: {member.filename}")
+        zipf.extractall(target_resolved)
+
+
 def handle_uncompress():
     """
     Prompt for a ZIP file path and extract its contents.
@@ -332,8 +355,7 @@ def handle_uncompress():
     zip_folder.mkdir(exist_ok=True)
 
     try:
-        with zipfile.ZipFile(zip_file, "r") as zipf:
-            zipf.extractall(zip_folder)
+        _safe_extract_zip(Path(zip_file), zip_folder)
 
         console.print("[green]Extraction completed successfully![/]")
     except Exception as e:
@@ -365,6 +387,10 @@ def handle_pic2jpg():
     converted = 0
     errors = 0
 
+    delete_originals = Confirm.ask(
+        "Delete original non-JPG files after conversion?", default=False, console=console
+    )
+
     with Progress(
         "[progress.description]{task.description}",
         BarColumn(),
@@ -389,7 +415,8 @@ def handle_pic2jpg():
                     rgb_img = img.convert("RGB")
                     rgb_img.save(new_path, quality=100, optimize=False)
 
-                img_path.unlink()  # Delete original file
+                if delete_originals:
+                    img_path.unlink()
                 converted += 1
             except Exception as e:
                 error_console.print(f"Error converting {img_path}: {e}")
