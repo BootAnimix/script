@@ -4,7 +4,7 @@ pub mod frames;
 pub mod manifest;
 pub mod model;
 
-pub use descriptor::{parse_descriptor, serialize_descriptor};
+pub use descriptor::{parse_descriptor, parse_descriptor_lenient, serialize_descriptor};
 pub use error::{CoreError, ParseDiagnostic};
 pub use frames::{
     normalized_frame_name, order_frame_names, scan_directory_frames, FrameFormat,

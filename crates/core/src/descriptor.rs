@@ -4,12 +4,24 @@ use crate::model::{
     RepeatCount, RgbColor,
 };
 
-/// Initial `desc.txt` parser and serializer.
+/// Parse `desc.txt` in strict mode (rejects unrecognized directives).
 pub fn parse_descriptor(input: &str) -> Result<AnimationDescriptor, CoreError> {
+    parse_descriptor_with_options(input, false)
+}
+
+/// Parse `desc.txt`, optionally preserving unknown vendor directives on lines after the header.
+pub fn parse_descriptor_lenient(input: &str) -> Result<AnimationDescriptor, CoreError> {
+    parse_descriptor_with_options(input, true)
+}
+
+fn parse_descriptor_with_options(
+    input: &str,
+    preserve_unknown: bool,
+) -> Result<AnimationDescriptor, CoreError> {
     let mut header: Option<(u32, u32, u32, bool)> = None;
     let mut dynamic_colors: Option<DynamicColors> = None;
     let mut parts: Vec<PartDeclaration> = Vec::new();
-    let preserved_directives = Vec::new();
+    let mut preserved_directives: Vec<crate::model::UnknownDirective> = Vec::new();
 
     for (idx, raw_line) in input.lines().enumerate() {
         let line_no = idx + 1;
@@ -41,8 +53,20 @@ pub fn parse_descriptor(input: &str) -> Result<AnimationDescriptor, CoreError> {
             continue;
         }
 
-        let part = parse_part_tokens(&tokens, line_no)?;
-        parts.push(part);
+        match parse_part_tokens(&tokens, line_no) {
+            Ok(part) => parts.push(part),
+            Err(err) => {
+                let is_known_prefix = matches!(tokens[0], "p" | "c" | "f" | "$SYSTEM");
+                if preserve_unknown && !is_known_prefix {
+                    preserved_directives.push(crate::model::UnknownDirective {
+                        line_number: line_no,
+                        raw_line: line.to_string(),
+                    });
+                } else {
+                    return Err(err);
+                }
+            }
+        }
     }
 
     let (width, height, fps, show_progress) = header.ok_or_else(|| CoreError::DescriptorParse {
@@ -382,5 +406,16 @@ mod tests {
         assert!(parse_descriptor("0 1080 60\np 1 0 part0\n").is_err());
         assert!(parse_descriptor("1080 1920 60\np 1 0 ../secret\n").is_err());
         assert!(parse_descriptor("1080 1920 60\nf 1 0 part0\n").is_err());
+    }
+
+    #[test]
+    fn handles_crlf_comments_and_lenient_unknown_directives() {
+        let raw = "# comment header\r\n1080 1920 30\r\n\r\np 1 0 part0\r\nvendor_ext foo bar\r\nc 0 10 part1 #00FF00\r\n";
+        assert!(parse_descriptor(raw).is_err());
+        let lenient = parse_descriptor_lenient(raw).expect("lenient should capture unknown directive");
+        assert_eq!(lenient.parts.len(), 2);
+        assert_eq!(lenient.preserved_directives.len(), 1);
+        assert_eq!(lenient.preserved_directives[0].line_number, 5);
+        assert!(serialize_descriptor(&lenient).is_err());
     }
 }
