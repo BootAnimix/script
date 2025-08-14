@@ -1,9 +1,14 @@
+pub mod archive;
 pub mod descriptor;
 pub mod error;
 pub mod frames;
 pub mod manifest;
 pub mod model;
 
+pub use archive::{
+    inspect_zip_file, inspect_zip_reader, is_safe_archive_entry_path, safe_extract_zip,
+    write_stored_bootanimation_zip, ArchiveBuildEntry, ArchiveEntryInfo, ArchiveInspection,
+};
 pub use descriptor::{parse_descriptor, parse_descriptor_lenient, serialize_descriptor};
 pub use error::{CoreError, ParseDiagnostic};
 pub use frames::{

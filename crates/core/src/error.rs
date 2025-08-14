@@ -21,6 +21,9 @@ pub enum CoreError {
     #[error("project manifest error: {0}")]
     Manifest(String),
 
+    #[error("archive error: {0}")]
+    Archive(String),
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }
