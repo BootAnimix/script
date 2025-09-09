@@ -537,4 +537,22 @@ mod tests {
         assert!(is_safe_archive_entry_path("desc.txt"));
         assert!(is_safe_archive_entry_path("part0/00000.png"));
     }
+
+    #[test]
+    fn safe_extract_rejects_traversal_and_duplicate_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad_zip = dir.path().join("bad.zip");
+        {
+            let f = File::create(&bad_zip).unwrap();
+            let mut zw = ZipWriter::new(f);
+            let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+            zw.start_file("../escape.txt", opts).unwrap();
+            zw.write_all(b"nope").unwrap();
+            zw.finish().unwrap();
+        }
+        let target = dir.path().join("extracted");
+        let err = safe_extract_zip(&bad_zip, &target).unwrap_err();
+        assert!(err.to_string().contains("unsafe paths"));
+        assert!(!dir.path().join("escape.txt").exists());
+    }
 }
