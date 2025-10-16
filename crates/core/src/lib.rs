@@ -4,6 +4,7 @@ pub mod error;
 pub mod frames;
 pub mod manifest;
 pub mod model;
+pub mod validator;
 
 pub use archive::{
     inspect_zip_file, inspect_zip_reader, is_safe_archive_entry_path, safe_extract_zip,
@@ -20,3 +21,7 @@ pub use manifest::{
     ResizeMode, TransformSettings, CURRENT_SCHEMA_VERSION,
 };
 pub use model::*;
+pub use validator::{
+    encode_solid_png, validate_archive_file, validate_project, Diagnostic, DiagnosticSeverity,
+    PerformanceSummary, ValidationOutcome, ValidationReport,
+};
