@@ -884,4 +884,63 @@ mod tests {
         assert!(codes.contains(&"BA-DSC-004"), "must warn on c 0 infinite loop");
         assert!(codes.contains(&"BA-FRM-001"), "must report corrupt PNG");
     }
+
+    #[test]
+    fn golden_fixtures_cover_trim_missing_dirs_and_fonts() {
+        let dir = tempfile::tempdir().unwrap();
+        let trimmed_zip = dir.path().join("trimmed.zip");
+        let small_png = encode_solid_png(32, 32, [0, 255, 0, 255]).unwrap();
+        let font_png = encode_solid_png(160, 144, [255, 255, 255, 255]).unwrap();
+
+        // Valid trimmed animation with progress_font.png and clock_font.png
+        let entries = vec![
+            ArchiveBuildEntry {
+                archive_path: "desc.txt".to_string(),
+                bytes: b"64 64 30 p\np 1 5 part0 #000000 c -12\n".to_vec(),
+            },
+            ArchiveBuildEntry {
+                archive_path: "clock_font.png".to_string(),
+                bytes: font_png.clone(),
+            },
+            ArchiveBuildEntry {
+                archive_path: "progress_font.png".to_string(),
+                bytes: font_png,
+            },
+            ArchiveBuildEntry {
+                archive_path: "part0/trim.txt".to_string(),
+                bytes: b"32x32+16+16\n".to_vec(),
+            },
+            ArchiveBuildEntry {
+                archive_path: "part0/00000.png".to_string(),
+                bytes: small_png.clone(),
+            },
+        ];
+        write_stored_bootanimation_zip(&entries, &trimmed_zip).unwrap();
+        let report = validate_archive_file(&trimmed_zip).unwrap();
+        assert_eq!(report.outcome, ValidationOutcome::Valid);
+
+        // Invalid trim.txt out of bounds + missing part1 directory
+        let bad_trim_zip = dir.path().join("bad_trim.zip");
+        let bad_entries = vec![
+            ArchiveBuildEntry {
+                archive_path: "desc.txt".to_string(),
+                bytes: b"64 64 30 p\np 1 0 part0\np 1 0 part1\n".to_vec(),
+            },
+            ArchiveBuildEntry {
+                archive_path: "part0/trim.txt".to_string(),
+                bytes: b"32x32+50+50\n".to_vec(),
+            },
+            ArchiveBuildEntry {
+                archive_path: "part0/00000.png".to_string(),
+                bytes: small_png,
+            },
+        ];
+        write_stored_bootanimation_zip(&bad_entries, &bad_trim_zip).unwrap();
+        let bad_report = validate_archive_file(&bad_trim_zip).unwrap();
+        assert_eq!(bad_report.outcome, ValidationOutcome::Invalid);
+        let codes: Vec<&str> = bad_report.diagnostics.iter().map(|d| d.code.as_str()).collect();
+        assert!(codes.contains(&"BA-TRM-001"));
+        assert!(codes.contains(&"BA-DSC-005"));
+        assert!(codes.contains(&"BA-DSC-006"));
+    }
 }
