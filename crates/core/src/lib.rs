@@ -4,6 +4,7 @@ pub mod error;
 pub mod frames;
 pub mod manifest;
 pub mod model;
+pub mod pipeline;
 pub mod validator;
 
 pub use archive::{
@@ -21,6 +22,11 @@ pub use manifest::{
     ResizeMode, TransformSettings, CURRENT_SCHEMA_VERSION,
 };
 pub use model::*;
+pub use pipeline::{
+    build_project_to_archive, compute_trimmed_subimage, detect_ffmpeg, import_archive_to_project,
+    import_frame_sequence_dir, import_video_with_ffmpeg, BuildReport, FfmpegInfo,
+    VideoImportOptions,
+};
 pub use validator::{
     encode_solid_png, validate_archive_file, validate_project, Diagnostic, DiagnosticSeverity,
     PerformanceSummary, ValidationOutcome, ValidationReport,

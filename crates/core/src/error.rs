@@ -24,6 +24,12 @@ pub enum CoreError {
     #[error("archive error: {0}")]
     Archive(String),
 
+    #[error("pipeline error: {0}")]
+    Pipeline(String),
+
+    #[error("FFmpeg unavailable or failed: {0}")]
+    Ffmpeg(String),
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }
