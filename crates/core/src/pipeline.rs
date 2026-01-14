@@ -866,8 +866,24 @@ mod tests {
         manifest.transforms.generate_trim_txt = true;
 
         let out_zip = dir.path().join("trimmed_boot.zip");
-        let report = build_project_to_archive(&manifest, &proj_dir, &out_zip).unwrap();
-        assert!(report.invariants_verified);
-        assert_eq!(report.validation.outcome, ValidationOutcome::Valid);
+            // Verify source files on disk before building
+            let report = build_project_to_archive(&manifest, &proj_dir, &out_zip).unwrap();
+            assert!(report.invariants_verified);
+            assert_eq!(report.validation.outcome, ValidationOutcome::Valid);
+
+            // Round-trip import of the built archive into a fresh project dir
+            let reimported_dir = dir.path().join("reimported");
+            let reimported = import_archive_to_project(&out_zip, &reimported_dir).unwrap();
+            assert_eq!(reimported.descriptor.width, 64);
+            assert_eq!(reimported.parts[0].frames.len(), 1);
+            assert_eq!(
+                reimported.parts[0].frames[0].trim,
+                Some(TrimRect {
+                    width: 20,
+                    height: 16,
+                    x: 20,
+                    y: 16
+                })
+            );
     }
 }
