@@ -5,6 +5,7 @@ pub mod frames;
 pub mod manifest;
 pub mod model;
 pub mod pipeline;
+pub mod playback;
 pub mod validator;
 
 pub use archive::{
@@ -26,6 +27,10 @@ pub use pipeline::{
     build_project_to_archive, compute_trimmed_subimage, detect_ffmpeg, import_archive_to_project,
     import_frame_sequence_dir, import_video_with_ffmpeg, BuildReport, FfmpegInfo,
     VideoImportOptions,
+};
+pub use playback::{
+    build_playback_schedule, export_preview_video_with_ffmpeg, PlaybackSchedule, ScheduleOptions,
+    ScheduledFrame,
 };
 pub use validator::{
     encode_solid_png, validate_archive_file, validate_project, Diagnostic, DiagnosticSeverity,
