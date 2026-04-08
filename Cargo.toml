@@ -2,10 +2,11 @@
 resolver = "2"
 members = [
     "crates/core",
+    "crates/cli",
 ]
 
 [workspace.package]
-version = "3.0.0-alpha.1"
+version = "3.0.0-alpha.2"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/BootAnimix/script"

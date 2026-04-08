@@ -2,6 +2,7 @@ pub mod archive;
 pub mod descriptor;
 pub mod error;
 pub mod frames;
+pub mod magisk;
 pub mod manifest;
 pub mod model;
 pub mod pipeline;
@@ -17,6 +18,9 @@ pub use error::{CoreError, ParseDiagnostic};
 pub use frames::{
     normalized_frame_name, order_frame_names, scan_directory_frames, FrameFormat,
     FrameSequenceReport, OrderedFrame,
+};
+pub use magisk::{
+    export_magisk_module, format_module_prop, validate_magisk_settings, MagiskExportReport,
 };
 pub use manifest::{
     ensure_safe_relative_path, FrameAssetRef, MagiskExportSettings, ProjectManifest, ProjectPart,
