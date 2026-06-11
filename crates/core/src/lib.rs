@@ -1,5 +1,6 @@
 pub mod archive;
 pub mod descriptor;
+pub mod editor;
 pub mod error;
 pub mod frames;
 pub mod magisk;
@@ -14,6 +15,7 @@ pub use archive::{
     write_stored_bootanimation_zip, ArchiveBuildEntry, ArchiveEntryInfo, ArchiveInspection,
 };
 pub use descriptor::{parse_descriptor, parse_descriptor_lenient, serialize_descriptor};
+pub use editor::{EditableProjectSession, HistoryEntry};
 pub use error::{CoreError, ParseDiagnostic};
 pub use frames::{
     normalized_frame_name, order_frame_names, scan_directory_frames, FrameFormat,
