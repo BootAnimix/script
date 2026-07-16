@@ -87,7 +87,7 @@ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
 name = "bootanimix-cli"
-version = "3.0.0-beta.1"
+version = "3.0.0"
 dependencies = [
  "bootanimix-core",
  "clap",
@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "bootanimix-core"
-version = "3.0.0-beta.1"
+version = "3.0.0"
 dependencies = [
  "image",
  "serde",
@@ -109,8 +109,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bootanimix-gui"
+version = "3.0.0"
+dependencies = [
+ "bootanimix-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "bootanimix-tui"
-version = "3.0.0-beta.1"
+version = "3.0.0"
 dependencies = [
  "bootanimix-core",
  "crossterm",
