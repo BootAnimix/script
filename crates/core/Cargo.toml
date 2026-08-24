@@ -13,3 +13,6 @@ thiserror = "2.0"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 tempfile = "3.10"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[dev-dependencies]
+proptest = "1.5"
