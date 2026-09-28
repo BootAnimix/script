@@ -19,14 +19,16 @@ fn arb_part(idx: usize) -> impl Strategy<Value = PartDeclaration> {
         0u32..=120u32,
         prop::option::of(arb_rgb()),
     )
-        .prop_map(move |(mode, repeat, pause_frames, background_color)| PartDeclaration {
-            mode,
-            repeat,
-            pause_frames,
-            path: format!("part{idx}"),
-            background_color,
-            clock: None,
-        })
+        .prop_map(
+            move |(mode, repeat, pause_frames, background_color)| PartDeclaration {
+                mode,
+                repeat,
+                pause_frames,
+                path: format!("part{idx}"),
+                background_color,
+                clock: None,
+            },
+        )
 }
 
 proptest! {

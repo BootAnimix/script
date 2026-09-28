@@ -85,10 +85,9 @@ where
             )));
         }
 
-        let ext = path
-            .extension()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| CoreError::FrameOrder(format!("frame '{file_name}' has no extension")))?;
+        let ext = path.extension().and_then(|s| s.to_str()).ok_or_else(|| {
+            CoreError::FrameOrder(format!("frame '{file_name}' has no extension"))
+        })?;
 
         let format = FrameFormat::from_extension(ext).ok_or_else(|| {
             CoreError::FrameOrder(format!(
@@ -215,7 +214,11 @@ pub fn scan_directory_frames(dir: &Path) -> Result<(Vec<PathBuf>, FrameSequenceR
 /// Generate normalized sequential archive filenames (`00000.png`, `00001.png`, ...).
 pub fn normalized_frame_name(index: usize, total_frames: usize, format: FrameFormat) -> String {
     let width = std::cmp::max(5, total_frames.saturating_sub(1).to_string().len());
-    format!("{index:0width$}.{}", format.canonical_extension(), width = width)
+    format!(
+        "{index:0width$}.{}",
+        format.canonical_extension(),
+        width = width
+    )
 }
 
 fn split_stem_number(stem: &str) -> Result<(String, Option<u64>, usize), CoreError> {
@@ -230,9 +233,9 @@ fn split_stem_number(stem: &str) -> Result<(String, Option<u64>, usize), CoreErr
         Some(idx) => {
             let prefix = stem[..idx].to_string();
             let digits_str = &stem[idx..];
-            let num = digits_str.parse::<u64>().map_err(|_| {
-                CoreError::FrameOrder(format!("frame number overflow in '{stem}'"))
-            })?;
+            let num = digits_str
+                .parse::<u64>()
+                .map_err(|_| CoreError::FrameOrder(format!("frame number overflow in '{stem}'")))?;
             Ok((prefix, Some(num), digits_str.len()))
         }
         None => Ok((stem.to_string(), None, 0)),
@@ -247,7 +250,11 @@ mod tests {
     fn orders_frames_numerically_independent_of_input_order() {
         let input = vec!["frame_10.png", "frame_2.png", "frame_1.png", "trim.txt"];
         let report = order_frame_names(input).expect("should order frames");
-        let ordered: Vec<&str> = report.frames.iter().map(|f| f.source_name.as_str()).collect();
+        let ordered: Vec<&str> = report
+            .frames
+            .iter()
+            .map(|f| f.source_name.as_str())
+            .collect();
         assert_eq!(ordered, vec!["frame_1.png", "frame_2.png", "frame_10.png"]);
         assert!(report.inconsistent_padding);
         assert!(report.has_numbering_gaps);
@@ -263,6 +270,9 @@ mod tests {
     #[test]
     fn generates_zero_padded_normalized_names() {
         assert_eq!(normalized_frame_name(0, 120, FrameFormat::Png), "00000.png");
-        assert_eq!(normalized_frame_name(42, 120, FrameFormat::Jpeg), "00042.jpg");
+        assert_eq!(
+            normalized_frame_name(42, 120, FrameFormat::Jpeg),
+            "00042.jpg"
+        );
     }
 }

@@ -1,32 +1,23 @@
 # Boot Animation Format Support (`FORMAT.md` Reference)
 
-Reference consulted: AOSP `platform/frameworks/base/+/master/cmds/bootanimation/FORMAT.md` (and Magisk module guide at `https://topjohnwu.github.io/Magisk/guides.html`).
+Reference consulted: AOSP `platform/frameworks/base/+/master/cmds/bootanimation/FORMAT.md` and Magisk module specification (`https://topjohnwu.github.io/Magisk/guides.html`).
 
-## Status Categories
+## Format Feature Matrix (BootAnimix 3.0 — October 2026)
 
-1. **Supported & Tested**: Parsed, validated, editable, previewed, and exported with automated tests.
-2. **Parsed & Preserved**: Recognized by parser and preserved on round-trip, but not directly editable in basic UI controls.
-3. **Parsed / Unsupported for Export**: Recognized so we can warn clearly rather than silently corrupting the archive.
-4. **Invalid Input**: Rejected with a structured diagnostic and line/entry context.
-5. **Requires Investigation**: Vendor-specific or hardware-dependent behavior.
-
-## Format Feature Matrix (Initial Baseline — May 2025)
-
-| Feature | AOSP Reference | Current 2.x (`main.py`) | 3.0 Target Policy | Compatibility / Notes |
-| :--- | :--- | :--- | :--- | :--- |
-| `bootanimation.zip` stored mode (`compression == 0`) | Mandatory (`zip -0qry`) | Uses `ZIP_STORED` in `compress`, unverified after write | **Supported & Tested** (verified by reopening archive) | Compressed entries fail to play on AOSP `BootAnimation.cpp`. |
-| Header `WIDTH HEIGHT FPS` | Mandatory first line | Parsed via `readline().split()`, crashes on `[PROGRESS]` | **Supported & Tested** | Positive integers required. |
-| Header `[PROGRESS]` token (`p`) | Optional 4th token on header line | Breaks `map(int, ...)` in 2.x | **Supported & Tested** | Displays progress % on last part if `progress_font.png` present. |
-| `dynamic_colors PATH #RGB1 #RGB2 #RGB3 #RGB4` | Optional 2nd line | Treated as section line and crashes in 2.x | **Parsed & Preserved** (initially), then **Supported & Tested** | Uses RGBA channels as masks; end colors come from `persist.bootanim.color1..4`. |
-| Part types `p` and `c` | Mandatory part syntax | Supported in `sort` | **Supported & Tested** | `p` interrupts on boot finish; `c` plays to completion. |
-| Part type `f` (fade out) | `f COUNT PAUSE PATH FADE [#RGBHEX [CLOCK1 [CLOCK2]]]` | Broken (2.x assumes 4 tokens per line) | **Supported & Tested** | Note `FADE` is the 5th field for `f` parts only! |
-| Special part `$SYSTEM` | Loads `/system/media/bootanimation.zip` | Unsupported | **Parsed & Preserved** | Warn in desktop preview since host has no `/system/media`. |
-| Repeat `COUNT` (`0` = infinite) | Mandatory per part | Supported | **Supported & Tested** | `0` loops until boot finishes; preview must not invent fake finite duration. |
-| `PAUSE` duration in frames | Mandatory per part (in frames, not seconds) | Always hardcoded to `0` in 2.x | **Supported & Tested** | Pausing holds the last frame of the part for `PAUSE` frames. |
-| Part `#RGBHEX` background color | Optional `#RRGGBB` per part | Ignored in 2.x | **Supported & Tested** | 6-digit hex color (with optional `#`). |
-| `CLOCK1` / `CLOCK2` coordinates | Optional watch clock coordinates (`c`, `n`, `-n`) | Ignored / breaks 2.x | **Supported & Tested** | Requires `clock_font.png` on device; preview discloses approximation. |
-| PNG frames in `partN/` | Primary frame format in AOSP | 2.x converts everything to JPG | **Supported & Tested** (Default) | Keep source pixels untouched unless user asks for transform. |
-| JPEG frames in `partN/` | Accepted by many AOSP builds, no alpha | Only format supported in 2.x | **Supported & Tested** (with warning if alpha expected) | Never auto-convert PNG to JPG behind the user's back. |
-| `trim.txt` (`WxH+X+Y` per line) | Optional per-part file | Ignored in 2.x | **Parsed & Preserved** -> **Supported & Tested** in Phase 10 | Must match frame count in part directory. |
-| `audio.wav` per part | Optional per-part WAV audio | Ignored in 2.x | **Parsed & Preserved** | Desktop preview notes audio.wav presence; some OEM ROMs disable boot audio. |
-| `clock_font.png` & `progress_font.png` | Optional root archive textures | Ignored in 2.x | **Parsed & Preserved** | 16x6 ASCII glyph grid (top regular, bottom bold). |
+| Feature | AOSP Reference | BootAnimix 3.0 Status | Parser / Serializer | Preview Engine | Validator / Tests | Notes & Compatibility |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `bootanimation.zip` `ZIP_STORED` (`0`) | Mandatory (`zip -0qry`) | **1. Supported & Tested** | Enforced on write; reopened & verified | N/A | `BA-ARC-001`, unit + proptest | Any compressed entry fails build verification and never overwrites previous output. |
+| Header `WIDTH HEIGHT FPS` | Mandatory 1st line | **1. Supported & Tested** | Parsed & serialized with trailing `\n` | Sets canvas aspect & tick rate | `BA-DSC-001`, `BA-DSC-002` | Rejects `0` or >`16384` dimensions. |
+| Header `[PROGRESS]` (`p`) | Optional 4th token | **1. Supported & Tested** | Parsed & serialized | Simulated % overlay + fidelity warning | `BA-DSC-006` (warns if `progress_font.png` missing) | Requires `progress_font.png` at archive root on device. |
+| `dynamic_colors PATH #RGB1..4` | Optional 2nd line | **1. Supported & Tested** | Parsed, validated & round-tripped | Discloses runtime property limitation | `BA-DSC-006`, `descriptors.rs` | End colors come from `persist.bootanim.color1..4` on device. |
+| Part modes `p` & `c` | Mandatory per part | **1. Supported & Tested** | Parsed & serialized | Models interruptible vs completion | `BA-DSC-004` (warns on `c 0` infinite loop) | `c 0` soft-hangs boot on many ROMs. |
+| Part mode `f` (fade out) | `f COUNT PAUSE PATH FADE ...` | **1. Supported & Tested** | Parsed & serialized (`FADE` after `PATH`) | Models opacity decay on first interrupted `f` part | `descriptor::tests`, `playback::tests` | `FADE=0` behaves like `p`. |
+| Special part `$SYSTEM` | `/system/media/bootanimation.zip` | **2. Parsed & Preserved** | Parsed & round-tripped | Emits desktop fidelity warning | `descriptors.rs` | Device-only fallback path. |
+| Repeat `COUNT` (`0` = infinite) | Mandatory per part | **1. Supported & Tested** | Typed `RepeatCount::{Infinite, Finite(u32)}` | Never invents fake finite duration | `playback::tests` | Preview uses configurable tick window. |
+| `PAUSE` duration in frames | Mandatory per part (in frames) | **1. Supported & Tested** | `pause_frames: u32` | Holds final frame of part for `PAUSE` ticks | `playback::tests` | Explicitly labeled in frames in CLI/TUI/GUI. |
+| Part `#RGBHEX` background | Optional `#RRGGBB` | **1. Supported & Tested** | Typed `RgbColor` | Renders part background color | `descriptors.rs` | Used for `trim.txt` bounding-box calculation. |
+| `CLOCK1` / `CLOCK2` coords | Optional (`c`, `n`, `-n`) | **1. Supported & Tested** | Typed `ClockPosition` / `ClockCoord` | Emits watch clock fidelity note | `BA-DSC-006`, `descriptors.rs` | Warns if `clock_font.png` is absent. |
+| PNG & JPEG frames | PNG primary; JPEG common | **1. Supported & Tested** | Preserves source bytes unless transform requested | Decoded on demand | `BA-FRM-001`..`005` | Lossless PNG optimization verifies decoded RGBA pixels match. |
+| `trim.txt` (`WxH+X+Y`) | Optional per-part file | **1. Supported & Tested** | Parsed, validated, and optionally generated | Draws trim bounds on preview canvas | `BA-TRM-001`, `pipeline::tests` | Checks line count == frame count and `X+W <= WIDTH`, `Y+H <= HEIGHT`. |
+| `audio.wav` per part | Optional per-part WAV | **2. Parsed & Preserved** | Copied into part during import/build | Discloses OEM boot audio note | `pipeline.rs` | Many OEMs disable boot audio in SurfaceFlinger. |
+| Unknown vendor directives | Non-AOSP custom lines | **3. Parsed / Refused for Rewrite** | Captured in `parse_descriptor_lenient` | N/A | `BA-DSC-007` | Refuses destructive `desc.txt` rewrite unless removed. |

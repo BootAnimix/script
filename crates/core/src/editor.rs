@@ -207,21 +207,14 @@ impl EditableProjectSession {
                 "frame index out of bounds".to_string(),
             ));
         }
-        self.record_before_edit(format!(
-            "Duplicate frame #{frame_index} in '{}'",
-            part.name
-        ));
+        self.record_before_edit(format!("Duplicate frame #{frame_index} in '{}'", part.name));
         let part_mut = &mut self.current.parts[part_index];
         let clone_ref: FrameAssetRef = part_mut.frames[frame_index].clone();
         part_mut.frames.insert(frame_index + 1, clone_ref);
         Ok(())
     }
 
-    pub fn remove_frame(
-        &mut self,
-        part_index: usize,
-        frame_index: usize,
-    ) -> Result<(), CoreError> {
+    pub fn remove_frame(&mut self, part_index: usize, frame_index: usize) -> Result<(), CoreError> {
         let Some(part) = self.current.parts.get(part_index) else {
             return Err(CoreError::InvalidDescriptor("part not found".to_string()));
         };

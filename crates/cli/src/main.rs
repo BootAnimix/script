@@ -452,7 +452,10 @@ fn run_cli(cli: Cli) -> Result<ExitCode, String> {
                 println!("{}", serde_json::to_string_pretty(&ff).unwrap());
             } else {
                 println!("BootAnimix 3.0 Doctor");
-                println!("Core schema version: {}", bootanimix_core::CURRENT_SCHEMA_VERSION);
+                println!(
+                    "Core schema version: {}",
+                    bootanimix_core::CURRENT_SCHEMA_VERSION
+                );
                 if ff.available {
                     println!(
                         "FFmpeg:              available ({})",
@@ -489,7 +492,9 @@ fn parse_dimensions_arg(raw: &str) -> Result<(u32, u32), String> {
     let (w_s, h_s) = raw
         .split_once('x')
         .or_else(|| raw.split_once('X'))
-        .ok_or_else(|| format!("invalid dimensions '{raw}' (expected WIDTHxHEIGHT, e.g. 1080x2400)"))?;
+        .ok_or_else(|| {
+            format!("invalid dimensions '{raw}' (expected WIDTHxHEIGHT, e.g. 1080x2400)")
+        })?;
     let w: u32 = w_s
         .parse()
         .map_err(|_| format!("invalid width in '{raw}'"))?;

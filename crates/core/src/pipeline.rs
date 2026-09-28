@@ -195,7 +195,10 @@ pub fn import_archive_to_project(
         }
         let part_dir = assets_dir.join(&part.path);
         if !part_dir.exists() {
-            warnings.push(format!("declared part directory '{}' is missing", part.path));
+            warnings.push(format!(
+                "declared part directory '{}' is missing",
+                part.path
+            ));
             continue;
         }
 
@@ -297,7 +300,10 @@ pub fn import_video_with_ffmpeg(
     std::fs::create_dir_all(&frames_dir)?;
 
     let mut cmd = Command::new(&info.binary_path);
-    cmd.arg("-hide_banner").arg("-loglevel").arg("error").arg("-y");
+    cmd.arg("-hide_banner")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-y");
 
     if let Some(start) = options.start_seconds {
         if start >= 0.0 {
@@ -345,10 +351,12 @@ pub fn import_video_with_ffmpeg(
     let frame_refs: Vec<FrameAssetRef> = ordered_paths
         .iter()
         .filter_map(|p| {
-            p.file_name().and_then(|s| s.to_str()).map(|name| FrameAssetRef {
-                relative_path: format!("assets/part0/{name}"),
-                trim: None,
-            })
+            p.file_name()
+                .and_then(|s| s.to_str())
+                .map(|name| FrameAssetRef {
+                    relative_path: format!("assets/part0/{name}"),
+                    trim: None,
+                })
         })
         .collect();
 
@@ -484,7 +492,8 @@ pub fn build_project_to_archive(
             .unwrap_or(RgbColor::new(0, 0, 0));
 
         for (idx, frame_ref) in part.frames.iter().enumerate() {
-            let src_path = ProjectManifest::resolve_asset_path(project_dir, &frame_ref.relative_path)?;
+            let src_path =
+                ProjectManifest::resolve_asset_path(project_dir, &frame_ref.relative_path)?;
             let src_bytes = std::fs::read(&src_path)?;
             original_image_bytes = original_image_bytes.saturating_add(src_bytes.len() as u64);
 
@@ -624,7 +633,8 @@ fn process_frame_Pipeline(
             } else {
                 CompressionType::Default
             };
-            let encoder = PngEncoder::new_with_quality(&mut out, compression, PngFilterType::Adaptive);
+            let encoder =
+                PngEncoder::new_with_quality(&mut out, compression, PngFilterType::Adaptive);
             encoder
                 .write_image(
                     rgba.as_raw(),
@@ -670,7 +680,9 @@ fn apply_resize(
         return src.clone();
     }
     match mode {
-        ResizeMode::Stretch => image::imageops::resize(src, target_w, target_h, FilterType::Lanczos3),
+        ResizeMode::Stretch => {
+            image::imageops::resize(src, target_w, target_h, FilterType::Lanczos3)
+        }
         ResizeMode::Contain => {
             let scale = f64::min(target_w as f64 / sw as f64, target_h as f64 / sh as f64);
             let nw = ((sw as f64 * scale).round() as u32).max(1);
@@ -866,24 +878,24 @@ mod tests {
         manifest.transforms.generate_trim_txt = true;
 
         let out_zip = dir.path().join("trimmed_boot.zip");
-            // Verify source files on disk before building
-            let report = build_project_to_archive(&manifest, &proj_dir, &out_zip).unwrap();
-            assert!(report.invariants_verified);
-            assert_eq!(report.validation.outcome, ValidationOutcome::Valid);
+        // Verify source files on disk before building
+        let report = build_project_to_archive(&manifest, &proj_dir, &out_zip).unwrap();
+        assert!(report.invariants_verified);
+        assert_eq!(report.validation.outcome, ValidationOutcome::Valid);
 
-            // Round-trip import of the built archive into a fresh project dir
-            let reimported_dir = dir.path().join("reimported");
-            let reimported = import_archive_to_project(&out_zip, &reimported_dir).unwrap();
-            assert_eq!(reimported.descriptor.width, 64);
-            assert_eq!(reimported.parts[0].frames.len(), 1);
-            assert_eq!(
-                reimported.parts[0].frames[0].trim,
-                Some(TrimRect {
-                    width: 20,
-                    height: 16,
-                    x: 20,
-                    y: 16
-                })
-            );
+        // Round-trip import of the built archive into a fresh project dir
+        let reimported_dir = dir.path().join("reimported");
+        let reimported = import_archive_to_project(&out_zip, &reimported_dir).unwrap();
+        assert_eq!(reimported.descriptor.width, 64);
+        assert_eq!(reimported.parts[0].frames.len(), 1);
+        assert_eq!(
+            reimported.parts[0].frames[0].trim,
+            Some(TrimRect {
+                width: 20,
+                height: 16,
+                x: 20,
+                y: 16
+            })
+        );
     }
 }

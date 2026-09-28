@@ -519,11 +519,8 @@ mod tests {
         let original_bytes = std::fs::read(&dest).unwrap();
 
         // Attempt to build with Deflated compression; must fail verification and leave original_bytes intact!
-        let res = write_bootanimation_zip_with_method(
-            &valid_entries,
-            &dest,
-            CompressionMethod::Deflated,
-        );
+        let res =
+            write_bootanimation_zip_with_method(&valid_entries, &dest, CompressionMethod::Deflated);
         assert!(res.is_err());
         assert_eq!(std::fs::read(&dest).unwrap(), original_bytes);
     }

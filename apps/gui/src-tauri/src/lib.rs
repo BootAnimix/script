@@ -179,10 +179,13 @@ pub fn gui_replace_manifest(
 ) -> Result<WorkspaceSnapshot, String> {
     let mut guard = state.0.lock().map_err(|_| "mutex poisoned")?;
     let prev = guard.session.current.clone();
-    guard.session.undo_stack.push(bootanimix_core::HistoryEntry {
-        label: "GUI edit".to_string(),
-        manifest: prev,
-    });
+    guard
+        .session
+        .undo_stack
+        .push(bootanimix_core::HistoryEntry {
+            label: "GUI edit".to_string(),
+            manifest: prev,
+        });
     guard.session.redo_stack.clear();
     guard.session.current = manifest;
     guard.session.dirty = true;

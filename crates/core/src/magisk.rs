@@ -64,10 +64,7 @@ pub fn validate_magisk_settings(settings: &MagiskExportSettings) -> Result<(), C
     }
 
     let tp = settings.target_path.trim_matches('/');
-    if !is_safe_archive_entry_path(tp)
-        || !tp.starts_with("system/")
-        || !tp.ends_with(".zip")
-    {
+    if !is_safe_archive_entry_path(tp) || !tp.starts_with("system/") || !tp.ends_with(".zip") {
         return Err(CoreError::Pipeline(format!(
             "Magisk target_path '{}' must be a safe relative path under 'system/' ending in '.zip' (e.g. 'system/media/bootanimation.zip' or 'system/product/media/bootanimation.zip')",
             settings.target_path
@@ -141,7 +138,11 @@ pub fn export_magisk_module(
 
     // Independently verify the outer module archive AND extract/verify the inner bootanimation.zip
     let outer_inspection = inspect_zip_file(temp_outer.path())?;
-    let outer_names: Vec<String> = outer_inspection.entries.iter().map(|e| e.name.clone()).collect();
+    let outer_names: Vec<String> = outer_inspection
+        .entries
+        .iter()
+        .map(|e| e.name.clone())
+        .collect();
     if !outer_names.contains(&"module.prop".to_string())
         || !outer_names.contains(&target_overlay_path)
     {
@@ -212,8 +213,10 @@ mod tests {
 
     #[test]
     fn validates_magisk_id_and_exports_verified_two_layer_module() {
-        let mut bad = MagiskExportSettings::default();
-        bad.module_id = "1_invalid_start".to_string();
+        let mut bad = MagiskExportSettings {
+            module_id: "1_invalid_start".to_string(),
+            ..Default::default()
+        };
         assert!(validate_magisk_settings(&bad).is_err());
 
         bad.module_id = "valid_id".to_string();

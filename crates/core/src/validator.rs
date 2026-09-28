@@ -98,7 +98,9 @@ pub fn validate_archive_file(path: &Path) -> Result<ValidationReport, CoreError>
             message: format!("Archive entry has unsafe path: '{unsafe_path}'"),
             file_or_part: Some(unsafe_path.clone()),
             line: None,
-            remediation: "Remove parent-directory ('..'), absolute, or backslash paths from the archive.".to_string(),
+            remediation:
+                "Remove parent-directory ('..'), absolute, or backslash paths from the archive."
+                    .to_string(),
             blocks_export: true,
         });
     }
@@ -150,7 +152,8 @@ pub fn validate_archive_file(path: &Path) -> Result<ValidationReport, CoreError>
             message: format!("Failed to parse desc.txt: {err_msg}"),
             file_or_part: Some("desc.txt".to_string()),
             line: extract_line_from_error(err_msg),
-            remediation: "Fix the syntax error in desc.txt according to AOSP FORMAT.md.".to_string(),
+            remediation: "Fix the syntax error in desc.txt according to AOSP FORMAT.md."
+                .to_string(),
             blocks_export: true,
         });
     }
@@ -502,7 +505,8 @@ fn validate_descriptor_semantics(
                 ),
                 file_or_part: Some("desc.txt".to_string()),
                 line: Some(unk.line_number),
-                remediation: "Remove the unsupported directive before rewriting desc.txt.".to_string(),
+                remediation: "Remove the unsupported directive before rewriting desc.txt."
+                    .to_string(),
                 blocks_export: true,
             });
         }
@@ -567,7 +571,8 @@ fn validate_descriptor_semantics(
                 ),
                 file_or_part: Some(part.path.clone()),
                 line: None,
-                remediation: "Add clock_font.png at the archive root or remove clock coordinates.".to_string(),
+                remediation: "Add clock_font.png at the archive root or remove clock coordinates."
+                    .to_string(),
                 blocks_export: false,
             });
         }
@@ -689,7 +694,9 @@ fn validate_image_bytes(
                     ),
                     file_or_part: Some(entry_path.to_string()),
                     line: None,
-                    remediation: "Resize the frame explicitly or update desc.txt / trim.txt dimensions.".to_string(),
+                    remediation:
+                        "Resize the frame explicitly or update desc.txt / trim.txt dimensions."
+                            .to_string(),
                     blocks_export: false,
                 });
             }
@@ -778,7 +785,9 @@ fn compute_performance_summary(
             ),
             file_or_part: None,
             line: None,
-            remediation: "Consider lossless PNG optimization or trim.txt if boot playback stutters.".to_string(),
+            remediation:
+                "Consider lossless PNG optimization or trim.txt if boot playback stutters."
+                    .to_string(),
             blocks_export: false,
         });
     }
@@ -880,8 +889,14 @@ mod tests {
         let report = validate_archive_file(&zip_path).unwrap();
         assert_eq!(report.outcome, ValidationOutcome::Invalid);
         let codes: Vec<&str> = report.diagnostics.iter().map(|d| d.code.as_str()).collect();
-        assert!(codes.contains(&"BA-ARC-001"), "must report compressed entry");
-        assert!(codes.contains(&"BA-DSC-004"), "must warn on c 0 infinite loop");
+        assert!(
+            codes.contains(&"BA-ARC-001"),
+            "must report compressed entry"
+        );
+        assert!(
+            codes.contains(&"BA-DSC-004"),
+            "must warn on c 0 infinite loop"
+        );
         assert!(codes.contains(&"BA-FRM-001"), "must report corrupt PNG");
     }
 
@@ -938,7 +953,11 @@ mod tests {
         write_stored_bootanimation_zip(&bad_entries, &bad_trim_zip).unwrap();
         let bad_report = validate_archive_file(&bad_trim_zip).unwrap();
         assert_eq!(bad_report.outcome, ValidationOutcome::Invalid);
-        let codes: Vec<&str> = bad_report.diagnostics.iter().map(|d| d.code.as_str()).collect();
+        let codes: Vec<&str> = bad_report
+            .diagnostics
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
         assert!(codes.contains(&"BA-TRM-001"));
         assert!(codes.contains(&"BA-DSC-005"));
         assert!(codes.contains(&"BA-DSC-006"));

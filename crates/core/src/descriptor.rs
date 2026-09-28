@@ -85,7 +85,10 @@ fn parse_descriptor_with_options(
     })
 }
 
-fn parse_header_tokens(tokens: &[&str], line_no: usize) -> Result<(u32, u32, u32, bool), CoreError> {
+fn parse_header_tokens(
+    tokens: &[&str],
+    line_no: usize,
+) -> Result<(u32, u32, u32, bool), CoreError> {
     if tokens.len() < 3 || tokens.len() > 4 {
         return Err(CoreError::DescriptorParse {
             line: line_no,
@@ -106,7 +109,10 @@ fn parse_header_tokens(tokens: &[&str], line_no: usize) -> Result<(u32, u32, u32
         } else {
             return Err(CoreError::DescriptorParse {
                 line: line_no,
-                message: format!("invalid header progress flag '{}' (expected 'p')", tokens[3]),
+                message: format!(
+                    "invalid header progress flag '{}' (expected 'p')",
+                    tokens[3]
+                ),
             });
         }
     } else {
@@ -270,7 +276,9 @@ fn validate_part_path(raw: &str, line_no: usize) -> Result<String, CoreError> {
     if trimmed.is_empty()
         || raw.starts_with('/')
         || raw.contains('\\')
-        || trimmed.split('/').any(|seg| seg.is_empty() || seg == "." || seg == "..")
+        || trimmed
+            .split('/')
+            .any(|seg| seg.is_empty() || seg == "." || seg == "..")
     {
         return Err(CoreError::DescriptorParse {
             line: line_no,
@@ -292,10 +300,12 @@ fn parse_positive_u32(token: &str, field: &str, line_no: usize) -> Result<u32, C
 }
 
 fn parse_u32(token: &str, field: &str, line_no: usize) -> Result<u32, CoreError> {
-    token.parse::<u32>().map_err(|_| CoreError::DescriptorParse {
-        line: line_no,
-        message: format!("invalid integer for {}: '{}'", field, token),
-    })
+    token
+        .parse::<u32>()
+        .map_err(|_| CoreError::DescriptorParse {
+            line: line_no,
+            message: format!("invalid integer for {}: '{}'", field, token),
+        })
 }
 
 /// Serialize an `AnimationDescriptor` into canonical LF-terminated `desc.txt` text.
@@ -412,7 +422,8 @@ mod tests {
     fn handles_crlf_comments_and_lenient_unknown_directives() {
         let raw = "# comment header\r\n1080 1920 30\r\n\r\np 1 0 part0\r\nvendor_ext foo bar\r\nc 0 10 part1 #00FF00\r\n";
         assert!(parse_descriptor(raw).is_err());
-        let lenient = parse_descriptor_lenient(raw).expect("lenient should capture unknown directive");
+        let lenient =
+            parse_descriptor_lenient(raw).expect("lenient should capture unknown directive");
         assert_eq!(lenient.parts.len(), 2);
         assert_eq!(lenient.preserved_directives.len(), 1);
         assert_eq!(lenient.preserved_directives[0].line_number, 5);

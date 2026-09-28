@@ -14,7 +14,7 @@ pub enum ResizeMode {
     Crop,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransformSettings {
     pub resize: Option<(u32, u32, ResizeMode)>,
     pub flatten_alpha_to: Option<RgbColor>,
@@ -24,19 +24,6 @@ pub struct TransformSettings {
     pub lossless_optimize_png: bool,
     #[serde(default)]
     pub generate_trim_txt: bool,
-}
-
-impl Default for TransformSettings {
-    fn default() -> Self {
-        Self {
-            resize: None,
-            flatten_alpha_to: None,
-            convert_format: None,
-            target_fps: None,
-            lossless_optimize_png: false,
-            generate_trim_txt: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -312,8 +312,8 @@ pub fn export_preview_video_with_ffmpeg(
     let mut concat_body = String::new();
 
     for sf in &schedule.frames {
-        let abs_frame = ProjectManifest::resolve_asset_path(project_dir, &sf.relative_path)?
-            .canonicalize()?;
+        let abs_frame =
+            ProjectManifest::resolve_asset_path(project_dir, &sf.relative_path)?.canonicalize()?;
         // Strip Windows `\\?\` verbatim prefix if present so FFmpeg concat accepts the path
         let clean_path = abs_frame
             .display()

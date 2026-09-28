@@ -55,7 +55,7 @@ impl WorkspaceTab {
 #[derive(Debug)]
 pub enum WorkerEvent {
     Status(String),
-    ProjectLoaded(ProjectManifest, PathBuf, ValidationReport, PlaybackSchedule),
+    ProjectLoaded(Box<(ProjectManifest, PathBuf, ValidationReport, PlaybackSchedule)>),
     OperationDone(String),
     Error(String),
 }
@@ -96,8 +96,9 @@ impl TuiApp {
             pending_confirmation: None,
             command_history: Vec::new(),
             history_cursor: None,
-            status_message: "Ready. Press ':' for command bar, Tab/1-5 to switch panes, 'q' to quit."
-                .to_string(),
+            status_message:
+                "Ready. Press ':' for command bar, Tab/1-5 to switch panes, 'q' to quit."
+                    .to_string(),
             busy: false,
             should_quit: false,
             tx,
@@ -115,7 +116,9 @@ impl TuiApp {
         } else {
             (
                 path.to_path_buf(),
-                path.parent().unwrap_or_else(|| Path::new(".")).to_path_buf(),
+                path.parent()
+                    .unwrap_or_else(|| Path::new("."))
+                    .to_path_buf(),
             )
         };
         match ProjectManifest::load_from_file(&manifest_file) {
@@ -142,7 +145,8 @@ impl TuiApp {
                 WorkerEvent::Status(msg) => {
                     self.status_message = msg;
                 }
-                WorkerEvent::ProjectLoaded(manifest, dir, val, sched) => {
+                WorkerEvent::ProjectLoaded(boxed) => {
+                    let (manifest, dir, val, sched) = *boxed;
                     self.busy = false;
                     self.status_message = format!("Project '{}' ready.", manifest.name);
                     self.project_dir = Some(dir);
@@ -278,13 +282,7 @@ impl TuiApp {
 
     pub fn autocomplete_command(&mut self) {
         let known = [
-            "open ",
-            "import ",
-            "build ",
-            "validate",
-            "magisk ",
-            "doctor",
-            "quit",
+            "open ", "import ", "build ", "validate", "magisk ", "doctor", "quit",
         ];
         for cand in known {
             if cand.starts_with(self.command_input.as_str()) {
@@ -348,9 +346,10 @@ impl TuiApp {
                     match res {
                         Ok(m) => {
                             if let Ok(val) = validate_project(&m, &dst) {
-                                let sched =
-                                    build_playback_schedule(&m, ScheduleOptions::default());
-                                let _ = tx.send(WorkerEvent::ProjectLoaded(m, dst, val, sched));
+                                let sched = build_playback_schedule(&m, ScheduleOptions::default());
+                                let _ = tx.send(WorkerEvent::ProjectLoaded(Box::new((
+                                    m, dst, val, sched,
+                                ))));
                             }
                         }
                         Err(e) => {
@@ -541,7 +540,11 @@ impl TuiApp {
                 .iter()
                 .enumerate()
                 .map(|(idx, p)| {
-                    let prefix = if idx == self.selected_part { ">> " } else { "   " };
+                    let prefix = if idx == self.selected_part {
+                        ">> "
+                    } else {
+                        "   "
+                    };
                     ListItem::new(format!(
                         "{}{} (mode={:?}, repeat={:?}, pause={}f)",
                         prefix, p.path, p.mode, p.repeat, p.pause_frames
@@ -549,8 +552,11 @@ impl TuiApp {
                 })
                 .collect();
             f.render_widget(
-                List::new(items)
-                    .block(Block::default().borders(Borders::ALL).title(" Parts (j/k) ")),
+                List::new(items).block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(" Parts (j/k) "),
+                ),
                 cols[0],
             );
 
@@ -563,7 +569,10 @@ impl TuiApp {
                         .take(50)
                         .enumerate()
                         .map(|(i, fr)| {
-                            ListItem::new(format!("#{i:04}: {} (trim={:?})", fr.relative_path, fr.trim))
+                            ListItem::new(format!(
+                                "#{i:04}: {} (trim={:?})",
+                                fr.relative_path, fr.trim
+                            ))
                         })
                         .collect()
                 })
@@ -588,7 +597,9 @@ impl TuiApp {
     fn render_diagnostics(&self, f: &mut Frame, area: Rect) {
         let items: Vec<ListItem> = if let Some(val) = &self.validation {
             if val.diagnostics.is_empty() {
-                vec![ListItem::new("No diagnostics — project is clean and valid.")]
+                vec![ListItem::new(
+                    "No diagnostics — project is clean and valid.",
+                )]
             } else {
                 val.diagnostics
                     .iter()
@@ -624,7 +635,11 @@ impl TuiApp {
             let mut out = vec![
                 Line::from(format!(
                     "Canvas: {}x{} @ {} FPS | Infinite loop: {} | Finite duration: {:?}",
-                    sched.width, sched.height, sched.fps, sched.is_infinite, sched.finite_duration_seconds
+                    sched.width,
+                    sched.height,
+                    sched.fps,
+                    sched.is_infinite,
+                    sched.finite_duration_seconds
                 )),
                 Line::from(format!(
                     "Timeline Scrub (h/l or Left/Right): tick {} / {}",

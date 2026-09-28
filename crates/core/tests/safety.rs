@@ -25,10 +25,12 @@ fn failed_build_never_destroys_existing_valid_output_or_source_assets() {
     let valid_zip_bytes = std::fs::read(&out_zip).unwrap();
 
     // Now corrupt a project reference so the next build fails validation
-    manifest.parts[0].frames.push(bootanimix_core::FrameAssetRef {
-        relative_path: "assets/part0/nonexistent_missing_frame.png".to_string(),
-        trim: None,
-    });
+    manifest.parts[0]
+        .frames
+        .push(bootanimix_core::FrameAssetRef {
+            relative_path: "assets/part0/nonexistent_missing_frame.png".to_string(),
+            trim: None,
+        });
     let res = build_project_to_archive(&manifest, &proj_dir, &out_zip);
     assert!(res.is_err());
 
@@ -50,8 +52,7 @@ fn negative_tests_reject_animated_gif_and_malicious_zip_paths_and_corrupt_manife
     let gif_dir = dir.path().join("gif_folder");
     std::fs::create_dir_all(&gif_dir).unwrap();
     std::fs::write(gif_dir.join("anim.gif"), b"GIF89a").unwrap();
-    let gif_err =
-        import_frame_sequence_dir(&gif_dir, &dir.path().join("out_gif"), 30).unwrap_err();
+    let gif_err = import_frame_sequence_dir(&gif_dir, &dir.path().join("out_gif"), 30).unwrap_err();
     assert!(gif_err.to_string().contains(".gif"));
 
     // 2. Malicious ZIP path rejected before writing any file outside staging
