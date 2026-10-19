@@ -46,7 +46,7 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             archive_ext: tar.gz
-          - os: macos-13
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             archive_ext: tar.gz
     steps:
@@ -84,7 +84,11 @@ jobs:
           set -euo pipefail
           stage="bootanimix-${GITHUB_REF_NAME}-${{ matrix.target }}"
           tar -czf "${stage}.${{ matrix.archive_ext }}" "${stage}"
-          sha256sum "${stage}.${{ matrix.archive_ext }}" > "${stage}.${{ matrix.archive_ext }}.sha256"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${stage}.${{ matrix.archive_ext }}" > "${stage}.${{ matrix.archive_ext }}.sha256"
+          else
+            shasum -a 256 "${stage}.${{ matrix.archive_ext }}" > "${stage}.${{ matrix.archive_ext }}.sha256"
+          fi
       - name: Package archive (Windows)
         if: runner.os == 'Windows'
         shell: bash
@@ -92,7 +96,11 @@ jobs:
           set -euo pipefail
           stage="bootanimix-${GITHUB_REF_NAME}-${{ matrix.target }}"
           7z a "${stage}.${{ matrix.archive_ext }}" "${stage}"
-          sha256sum "${stage}.${{ matrix.archive_ext }}" > "${stage}.${{ matrix.archive_ext }}.sha256"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${stage}.${{ matrix.archive_ext }}" > "${stage}.${{ matrix.archive_ext }}.sha256"
+          else
+            shasum -a 256 "${stage}.${{ matrix.archive_ext }}" > "${stage}.${{ matrix.archive_ext }}.sha256"
+          fi
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
