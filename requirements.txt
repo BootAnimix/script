@@ -1,4 +1,0 @@
-rich 
-pillow >= 8.0.0
-moviepy >= 2.0.0
-numpy

@@ -15,6 +15,9 @@
 - **TUI (`bootanimix-tui`)**: Persistent Ratatui terminal workspace with 5 panes, command bar autocomplete, and background worker threads.
 - **GUI (`apps/gui`)**: Tauri 2 + Svelte 5 + TypeScript visual editor featuring an asset browser, live preview canvas, filmstrip timeline, properties inspector, interactive diagnostics, undo/redo history, and reviewed export dialog.
 
+### Removed
+- Legacy 2.x Python tooling (`main.py`, `pyproject.toml`, `requirements.txt`). The Rust core and its three interfaces now cover every workflow the old script provided; the audit of that code lives on in `docs/audit-2x.md` and its history remains in Git.
+
 ### Fixed (from 2.x)
 - Fixed destructive `shutil.rmtree` and unconditional `img_path.unlink()` in legacy `main.py` that could delete user source files.
 - Fixed path-traversal vulnerability in ZIP extraction.

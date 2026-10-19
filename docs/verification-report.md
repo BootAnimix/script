@@ -39,3 +39,7 @@ Ran the Studio GUI in a browser against the Vite dev server (`http://127.0.0.1:1
 5. **Diagnostics panel** - remained empty/clean throughout; no console errors were recorded during the session.
 
 The Magisk export path in the modal was not exercised in this browser session (it is covered by `cargo test` in `crates/core/src/magisk.rs` and the CLI integration test).
+
+## 5. Post-Verification Cleanup (19 October 2026)
+
+After the report above was written, the legacy 2.x Python tooling (`main.py`, `pyproject.toml`, `requirements.txt`) was removed from the working tree. No Rust, CLI, TUI, or GUI code referenced it; `cargo test --workspace` was re-run after the removal. The `py_compile` row in section 2 remains as the historical record of the legacy safety fixes made in May 2025.

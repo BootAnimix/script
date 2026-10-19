@@ -14,9 +14,10 @@ bootanimix/
 │       ├── src/                # Svelte components, canvas renderer, timeline, inspector
 │       └── src-tauri/          # Rust command bridge calling `bootanimix-core`
 ├── docs/                       # Format matrix, compatibility notes, architecture, guides
-├── tests/fixtures/             # Provenance and synthetic fixture documentation
-└── main.py                     # Legacy 2.x Python utility (kept with safety fixes for reference)
+└── tests/fixtures/             # Provenance and synthetic fixture documentation
 ```
+
+The legacy 2.x Python tooling (`main.py`, `pyproject.toml`, `requirements.txt`) was removed on 19 October 2026 once the Rust core covered every workflow it provided. Its history remains in Git and the defects found in it are recorded in `docs/audit-2x.md`.
 
 ## Core Responsibilities (`crates/core`)
 
