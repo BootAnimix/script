@@ -199,9 +199,14 @@ jobs:
             \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.deb' \
                -o -name '*.rpm' -o -name '*.AppImage' \) \
             -exec cp {} "${stage}/" \;
+          # The .app bundle is named "BootAnimix Studio.app" on every macOS
+          # target, so the tarball has to carry the target triple or the
+          # arm64 and x86_64 archives would collide when the release job
+          # merges the artifacts.
           for app in "${bundle_dir}"/macos/*.app; do
             [ -d "${app}" ] || continue
-            tar -czf "${stage}/$(basename "${app}").tar.gz" -C "$(dirname "${app}")" "$(basename "${app}")"
+            tar -czf "${stage}/BootAnimix-Studio-${{ matrix.target }}.app.tar.gz" \
+              -C "$(dirname "${app}")" "$(basename "${app}")"
           done
           ls -l "${stage}"
           test -n "$(ls -A "${stage}")"
@@ -226,11 +231,30 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist
-          merge-multiple: true
+          # Keep the per-artifact subdirectories so that a filename collision
+          # between two targets is detected below, rather than one artifact
+          # silently overwriting the other.
+          merge-multiple: false
+
+      - name: Flatten artifacts and check for duplicate names
+        shell: bash
+        run: |
+          set -euo pipefail
+          find dist -type f -printf '%f\n' | sort | uniq -d > duplicate_names.txt || true
+          if [ -s duplicate_names.txt ]; then
+            echo "::error::Two build artifacts produced the same asset name:"
+            cat duplicate_names.txt
+            exit 1
+          fi
+          mkdir -p flat
+          find dist -type f -exec cp {} flat/ \;
+          ls -l flat
+
       - name: Show published files
-        run: ls -lR dist
+        run: ls -lR flat
+
       - name: Create GitHub Release with binaries
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: dist/**
+          files: flat/**
