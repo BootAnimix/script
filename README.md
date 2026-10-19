@@ -1,101 +1,95 @@
-# BootAnimix
+# BootAnimix 3.0
 
-Welcome to **BootAnimix**, a delightful Python-based application for transforming videos and images into elegant boot animations. Whether you’re looking to convert videos into frame-by-frame image sequences, organize them into sections, resize videos, or compress/uncompress archives, BootAnimix has you covered in a friendly and visually appealing way!
+**BootAnimix 3.0** is a local-first, cross-platform Android boot-animation inspection, validation, editing, preview, and packaging suite built around a shared Rust core (`bootanimix-core`) with three first-class interfaces:
 
-![BootAnimix Screenshot](Terminal.png)
-
-## Table of Contents
-
-- Key Features
-- Installation
-- Quick Start
-- Commands Overview
-- How It Works
-- Contributing
-- License
+1. **CLI (`bootanimix`)** — Automation-friendly static-argument command-line interface with human and `--json` output.
+2. **TUI (`bootanimix-tui`)** — Persistent interactive terminal workspace powered by Ratatui.
+3. **GUI (`apps/gui`)** — Visual desktop studio built with Tauri 2, Svelte 5, and TypeScript featuring an asset browser, playback preview canvas, filmstrip timeline, properties inspector, interactive diagnostics, undo/redo history, and Magisk module export.
 
 ---
 
-## Key Features
+## Core Engineering Guarantees
 
-- **Convert Videos to JPG**: Easily extract frames from your video files.
-- **Organize & Sort Frames**: Group and sort frames into sections with loop counts.
-- **Resize Videos**: Adjust your video’s width or height while preserving aspect ratio.
-- **Compress & Uncompress**: Store files in a ZIP archive or extract existing ones.
-- **Generate Boot Animation**: Turn a bootanimation-like ZIP archive into an MP4 file.
+- **Mandatory `ZIP_STORED` (`0`) Verification:** Every generated `bootanimation.zip` (and the inner archive inside exported Magisk modules) is written using `ZIP_STORED` (method `0`), then reopened and inspected to verify that no compressed entries exist before committing transactionally.
+- **Non-Destructive Asset Handling:** Source images and existing valid output archives are never silently deleted, overwritten on failure, resized, or converted to JPEG behind your back.
+- **Specification-Backed `desc.txt` & `trim.txt` Support:** Handles `p`, `c`, `f` (fade-out), `$SYSTEM`, `dynamic_colors`, `#RRGGBB` backgrounds, watch `CLOCK1`/`CLOCK2` coordinates, and `trim.txt` (`WxH+X+Y`) bounding boxes per [AOSP `FORMAT.md`](https://android.googlesource.com/platform/frameworks/base/+/master/cmds/bootanimation/FORMAT.md).
 
 ---
 
-## Installation
+## Supported Platforms & Prerequisites
 
-1. Clone or download this repository.
+- **Operating Systems:** Windows, Linux, and macOS.
+- **Rust Toolchain:** `rustc` / `cargo` (1.80+ recommended).
+- **Node.js:** v20+ / npm (for building the Svelte 5 GUI frontend).
+- **FFmpeg (Optional):** Used only for video import (`import <video.mp4>`) and MP4 preview export (`preview --output <out.mp4>`). Core ZIP inspection, validation, frame-sequence import, editing, and packaging do **not** require FFmpeg.
 
-2. Navigate to the project folder in your terminal:
+---
 
-   ```bash
-   cd bootanimix
-   ```
-
-3. Install the required dependencies:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-Termux Installation (Single step):
+## Quick Start & Development Setup
 
 ```bash
-pkg update; pkg upgrade -y; pkg install git python -y; pkg install python-numpy python-pillow ffmpeg uv -y; git clone https://github.com/bootanimix/script; cd script; uv pip install -r requirements.txt --system
+# Build and run all Rust unit, integration, and property tests
+cargo test --workspace
+
+# Run the CLI doctor check
+cargo run -p bootanimix-cli -- doctor
+
+# Launch the persistent Ratatui TUI workspace
+cargo run -p bootanimix-tui -- ./path/to/project
+
+# Type-check and build the Svelte + TypeScript GUI studio
+cd apps/gui
+npm install
+npm run check
+npm run build
 ```
 
 ---
 
-## Quick Start
+## CLI Usage Examples
 
-1. Run the main application:
+```bash
+# Inspect an existing bootanimation.zip without modifying it
+bootanimix inspect bootanimation.zip
 
-   ```bash
-   python main.py
-   ```
+# Validate an archive or project directory (emit machine-readable JSON with --json)
+bootanimix validate bootanimation.zip
+bootanimix --json validate ./my_project
 
-2. Type in any command listed below, or simply type **help** to see them all.
+# Import a numbered PNG/JPG frame folder or video into a BootAnimix project
+bootanimix import ./frames_dir --output ./my_project --fps 60
+bootanimix import ./intro.mp4 --output ./my_project --fps 60 --dimensions 1080x2400
 
----
+# Build a verified ZIP_STORED bootanimation.zip (with optional lossless PNG & trim.txt)
+bootanimix build ./my_project --output ./dist/bootanimation.zip --optimize-png --generate-trim
 
-## Commands Overview
-
-- **help** – Display helpful information about commands.
-- **getinfo** – Show video metadata, including duration and dimensions.
-- **vid2jpg** – Convert a video to JPEG frames.
-- **zip2vid** – Create an MP4 video from a bootanimation ZIP.
-- **resize** – Change the resolution of a video without losing aspect ratio.
-- **sort** – Organize image frames into sections.
-- **unsort** – Revert your sorted frames back to a single folder.
-- **compress** – Archive a folder into a ZIP using store mode.
-- **uncompress** – Extract an existing ZIP archive.
-- **exit** – Quit the application gracefully.
-
----
-
-## How It Works
-
-1. **Interactive Prompts**: Enter file paths or select options as guided by the terminal prompts.
-2. **Progress Bars**: Enjoy real-time feedback on conversions and resizing tasks.
-3. **Customizable Sections**: Create boot animation sections with optional looping.
-4. **Seamless Cleanup**: Unsort or revert changes quickly if something goes wrong.
+# Export a flashable Magisk module with two-layer archive verification
+bootanimix export magisk ./my_project \
+  --output ./dist/magisk_bootanim.zip \
+  --id bootanimix_custom \
+  --target-path system/product/media/bootanimation.zip
+```
 
 ---
 
-## Contributing
+## Known Limitations & Compatibility Notes
 
-Contributions and suggestions are always welcome. Feel free to open an issue or submit a pull request on GitHub. Together, we can make BootAnimix even more delightful!
+- **No Physical Android Device / Emulator Attached in CI:** Desktop validation proves structural, image, and `ZIP_STORED` invariants against AOSP `FORMAT.md`, but cannot guarantee that every OEM's customized `BootAnimation` binary renders identical timing or memory behavior on hardware.
+- **OEM-Specific Formats & Paths:** Samsung OneUI uses proprietary `.qmg` boot animations and ignores `bootanimation.zip` on stock kernels. Google Pixel and modern Treble devices typically load `/product/media/bootanimation.zip` (use `--target-path system/product/media/bootanimation.zip` when exporting a Magisk module).
+- **Desktop Preview Approximations:** Watch clock glyphs (`clock_font.png`), boot progress (`progress_font.png`), and `dynamic_colors` end-color system properties (`persist.bootanim.color1..4`) depend on Android runtime properties and are disclosed with fidelity warnings in the preview engine.
 
 ---
+
+## Documentation
+
+- [Architecture Overview](docs/architecture.md)
+- [AOSP Format Support Matrix](docs/format-support.md)
+- [Compatibility & Magisk Overlay Notes](docs/compatibility.md)
+- [User Guide & Troubleshooting](docs/user-guide.md)
+- [2.x Baseline Audit Notes](docs/audit-2x.md)
+- [Test Fixture Provenance](tests/fixtures/README.md)
+- [Changelog](CHANGELOG.md)
 
 ## License
 
-Feel free to use, modify, and distribute BootAnimix in accordance with the terms of the license provided in this repository.
-
----
-
-Enjoy creating fantastic boot animations and dynamic video transformations with **BootAnimix**! If you have any feedback or encounter any issues, please reach out or open an issue. Happy booting!
+Released under the [MIT License](LICENSE).
