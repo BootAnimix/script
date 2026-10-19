@@ -27,3 +27,15 @@
 - **Gate D (Visual Quality):** Verified. The Svelte 5 Studio GUI provides a dark creative workspace with asset browser, live preview canvas, filmstrip timeline, properties inspector, interactive diagnostics, undo/redo, and export review modal.
 - **Gate E (Reliability):** Verified. All unit, integration, property-based (`proptest`), and negative safety tests pass with zero warnings.
 - **Gate F (Honest Release Status):** Verified. Limitations regarding physical Android device testing, OEM paths (`/product/media` vs `/system/media`), Samsung `.qmg` incompatibility, and desktop preview approximations for runtime system properties are explicitly documented in `README.md`, `docs/compatibility.md`, and `docs/format-support.md`.
+
+## 4. GUI Live Smoke Session (19 October 2026)
+
+Ran the Studio GUI in a browser against the Vite dev server (`http://127.0.0.1:1420`, 1340x860 viewport) and exercised the real editing flows:
+
+1. **Preview scrubbing** — `Step ▶` advanced the timeline (`Tick 1/240` -> `Tick 2/240`) and the canvas HUD updated to the scheduled frame.
+2. **Inspector edit** — changed header FPS `60 -> 30`; readout updated to `1080x2400 @ 30 FPS`, status bar confirmed, and Undo became available.
+3. **Undo** — restored FPS to `60`, enabled Redo, status bar reported the undone operation. (Note: committing a value in the number field requires a blur/change event; a plain `change` dispatch from automation triggers the same handler as a real user tab-away.)
+4. **Export review modal** — summary showed `3 parts / 26 frames`, `ZIP_STORED (Method 0 - Verified on Reopen)`, `Validation Status: VALID`; `Verify & Write Package` produced `Built 'dist/bootanimation.zip' ... compression=ZIP_STORED [0] verified after reopen`.
+5. **Diagnostics panel** - remained empty/clean throughout; no console errors were recorded during the session.
+
+The Magisk export path in the modal was not exercised in this browser session (it is covered by `cargo test` in `crates/core/src/magisk.rs` and the CLI integration test).
