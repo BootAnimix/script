@@ -13,8 +13,8 @@
   - First-class Magisk module exporter (`export_magisk_module`) with two-layer archive verification and configurable overlay paths (`system/media/bootanimation.zip`, `system/product/media/bootanimation.zip`, etc.).
 - **CLI (`bootanimix`)**: Static-argument commands (`inspect`, `validate`, `import`, `build`, `preview`, `export magisk`, `info`, `doctor`) with `--json` output.
 - **TUI (`bootanimix-tui`)**: Persistent Ratatui terminal workspace with 5 panes, command bar autocomplete, and background worker threads.
-- **GUI (`apps/gui`)**: Tauri 2 + Svelte 5 + TypeScript visual editor featuring an asset browser, live preview canvas, filmstrip timeline, properties inspector, interactive diagnostics, undo/redo history, and reviewed export dialog.
-- **Release automation (`.github/workflows/release.yml`)**: Pushing a `v*` tag builds smoke-tested `bootanimix` and `bootanimix-tui` release binaries for Linux (x86_64), Windows (x86_64), and macOS (arm64 + x86_64) and publishes them to a GitHub Release with SHA-256 checksums.
+- **GUI (`apps/gui`)**: Tauri 2 + Svelte 5 + TypeScript visual editor featuring an asset browser, live preview canvas, filmstrip timeline, properties inspector, interactive diagnostics, undo/redo history, and reviewed export dialog. The desktop shell is a real Tauri app: the Rust core owns the session state and the export path, so "Verify & Write Package" now writes a real `ZIP_STORED` archive (or Magisk module) instead of only logging a result.
+- **Release automation (`.github/workflows/release.yml`)**: Pushing a `v*` tag builds smoke-tested `bootanimix` and `bootanimix-tui` release binaries for Linux (x86_64), Windows (x86_64), and macOS (arm64 + x86_64) and publishes them to a GitHub Release with SHA-256 checksums, together with native **BootAnimix Studio** installers (NSIS/MSI, `.app`/`.dmg`, `.deb`/`.rpm`/`.AppImage`) built on per-OS runners. macOS bundles are ad-hoc signed so Gatekeeper does not flag them as damaged.
 
 ### Fixed
 - `bootanimix-tui` now handles `--help`/`-h` and `--version`/`-V` instead of treating them as a project path and opening the interactive TUI.

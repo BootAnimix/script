@@ -42,13 +42,30 @@ cd apps/gui
 npm install
 npm run check
 npm run build
+
+# Run the Tauri desktop studio in development (hot-reloading webview)
+npm run tauri dev
+
+# Build native desktop installers (NSIS/MSI, .app/.dmg, .deb/.rpm/AppImage)
+npm run tauri build
 ```
+
+> The Tauri app is a **separate Cargo workspace** (`apps/gui/src-tauri`) so the
+> platform webview toolchains (webkit2gtk on Linux) never leak into the
+> CLI/TUI builds. `cargo test --workspace` in the repo root therefore needs no
+> browser engine. The shared editing logic lives in `crates/gui`, which is
+> part of the main workspace and is covered by the normal test suite.
 
 ---
 
 ## Releases
 
-Pushing a version tag (`git tag v3.0.0 && git push origin v3.0.0`) triggers [.github/workflows/release.yml](.github/workflows/release.yml), which runs the test suite, builds smoke-tested `bootanimix` (CLI) and `bootanimix-tui` binaries for Linux (x86_64), Windows (x86_64), and macOS (Apple Silicon + Intel), and publishes them to the GitHub Release with SHA-256 checksums. The Tauri GUI is not bundled automatically (desktop bundles need per-OS webview toolchains and code signing) — build it from source as described above.
+Pushing a version tag (`git tag v3.0.0 && git push origin v3.0.0`) triggers [.github/workflows/release.yml](.github/workflows/release.yml), which runs the test suite and publishes two product lines to the same GitHub Release:
+
+- **`bootanimix` (CLI) and `bootanimix-tui` (TUI)** — smoke-tested binaries for Linux (x86_64), Windows (x86_64), and macOS (Apple Silicon + Intel), packaged as `tar.gz`/`zip` with SHA-256 checksums.
+- **BootAnimix Studio (Tauri 2 desktop app)** — native installers built on per-OS runners: NSIS `.exe` + `.msi` on Windows, `.app` + `.dmg` on macOS (Apple Silicon and Intel), and `.deb` + `.rpm` + `.AppImage` on Linux.
+
+macOS bundles are **ad-hoc signed** (`signingIdentity: "-"`) so Gatekeeper does not flag Apple Silicon downloads as damaged. They are not notarized, so the first launch requires right-click → Open. Windows installers are unsigned and will show a SmartScreen prompt.
 
 ---
 

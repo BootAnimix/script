@@ -201,6 +201,41 @@
     statusBanner = `Saved project manifest (${snapshot.manifest.name}/project.bootanimix.json)`;
   }
 
+  async function handleOpenProject() {
+    if (!bridge.isDesktop) {
+      statusBanner = 'Opening a project from disk requires the desktop app.';
+      return;
+    }
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const picked = await open({ directory: true, multiple: false, title: 'Open BootAnimix Project' });
+      if (typeof picked !== 'string') return;
+      snapshot = await bridge.openProject(picked);
+      currentTick = 0;
+      statusBanner = `Opened ${picked}`;
+      drawCanvasFrame();
+    } catch (err) {
+      statusBanner = `Open failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
+  async function handleBrowseDestination() {
+    if (!bridge.isDesktop) return;
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const picked = await save({
+        title: 'Export Boot Animation Archive',
+        defaultPath: exportDestination,
+        filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+      });
+      if (typeof picked === 'string') {
+        exportDestination = picked;
+      }
+    } catch (err) {
+      statusBanner = `Browse failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
   async function updateHeaderNumber(field: 'width' | 'height' | 'fps', raw: string) {
     const val = Math.max(1, Number.parseInt(raw, 10) || 1);
     snapshot = await bridge.commitMutation(
@@ -400,19 +435,33 @@
     return `#${hex(c.r)}${hex(c.g)}${hex(c.b)}`;
   }
 
-  function executeReviewedExport() {
+  async function executeReviewedExport() {
     if (!snapshot) return;
     if (snapshot.validation.outcome === 'invalid') {
       lastBuildLog =
         'Export refused: project has blocking validation errors. Resolve errors in Diagnostics first.';
       return;
     }
-    if (exportTargetKind === 'bootanimation') {
-      lastBuildLog = `Built '${exportDestination}' (${snapshot.validation.performance.total_frames} frames across ${snapshot.manifest.parts.length} parts, compression=ZIP_STORED [0] verified after reopen).`;
-      statusBanner = `Exported verified ${exportDestination}`;
-    } else {
-      lastBuildLog = `Exported Magisk module '${exportDestination}' (id=${snapshot.manifest.magisk.module_id}, target=/${snapshot.manifest.magisk.target_path}, inner bootanimation.zip ZIP_STORED verified).`;
-      statusBanner = `Exported Magisk module ${exportDestination}`;
+    if (!bridge.isDesktop) {
+      lastBuildLog =
+        'Export requires the desktop app: the browser preview has no filesystem access. Build BootAnimix Studio to write a real archive.';
+      return;
+    }
+
+    try {
+      if (exportTargetKind === 'bootanimation') {
+        const report = await bridge.buildArchive(exportDestination);
+        lastBuildLog = `Built '${report.output_path}' (${report.total_frames} frames across ${snapshot.manifest.parts.length} parts, compression=ZIP_STORED [${report.compression_method}] verified after reopen).`;
+        statusBanner = `Exported verified ${report.output_path}`;
+      } else {
+        const report = await bridge.exportMagisk(exportDestination);
+        lastBuildLog = `Exported Magisk module '${report.output_path}' (id=${report.module_id}, target=/${report.target_path}, inner bootanimation.zip ZIP_STORED verified).`;
+        statusBanner = `Exported Magisk module ${report.output_path}`;
+      }
+      await refresh();
+    } catch (err) {
+      lastBuildLog = `Export failed: ${err instanceof Error ? err.message : String(err)}`;
+      statusBanner = 'Export failed — see build log';
     }
   }
 </script>
@@ -438,6 +487,13 @@
       </div>
 
       <div class="toolbar-group">
+        <button
+          onclick={handleOpenProject}
+          disabled={!bridge.isDesktop}
+          title="Open a BootAnimix project directory"
+        >
+          Open Project
+        </button>
         <button onclick={handleSaveProject} title="Save Project Manifest">
           Save Project
         </button>
@@ -985,7 +1041,17 @@
 
             <label>
               <span>Output Destination</span>
-              <input type="text" class="mono" bind:value={exportDestination} />
+              <div class="path-row">
+                <input type="text" class="mono" bind:value={exportDestination} />
+                <button
+                  type="button"
+                  onclick={handleBrowseDestination}
+                  disabled={!bridge.isDesktop}
+                  title="Choose output file"
+                >
+                  Browse…
+                </button>
+              </div>
             </label>
           </div>
 
@@ -1326,6 +1392,17 @@
     align-items: center;
     gap: 7px;
     color: var(--text-primary);
+  }
+
+  .path-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .path-row input {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .bottom-dock {

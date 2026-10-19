@@ -4,18 +4,41 @@ BootAnimix 3.0 is organized around a single shared Rust library (`bootanimix-cor
 
 ```text
 bootanimix/
-├── Cargo.toml                  # Rust workspace root (core, cli, tui, gui-backend)
+├── Cargo.toml                  # Rust workspace root (core, cli, tui, gui)
 ├── crates/
 │   ├── core/                   # Shared domain model, parser, archive engine, validator, scheduler
 │   ├── cli/                    # Static-argument CLI (`bootanimix`)
-│   └── tui/                    # Persistent Ratatui terminal workspace (`bootanimix-tui`)
+│   ├── tui/                    # Persistent Ratatui terminal workspace (`bootanimix-tui`)
+│   └── gui/                    # Studio session state & editing operations (no Tauri dependency)
 ├── apps/
-│   └── gui/                    # Svelte 5 + TypeScript visual editor & Tauri 2 Rust backend
+│   └── gui/                    # Svelte 5 + TypeScript visual editor (BootAnimix Studio)
 │       ├── src/                # Svelte components, canvas renderer, timeline, inspector
-│       └── src-tauri/          # Rust command bridge calling `bootanimix-core`
+│       │   └── lib/bridge.ts   # IPC bridge to the Rust session
+│       └── src-tauri/          # Tauri 2 shell (its own Cargo workspace)
+│           ├── src/lib.rs      # `#[tauri::command]` IPC surface
+│           ├── capabilities/   # Tauri v2 permission grants
+│           └── icons/          # Bundler icon set
 ├── docs/                       # Format matrix, compatibility notes, architecture, guides
 └── tests/fixtures/             # Provenance and synthetic fixture documentation
 ```
+
+### Why the Tauri shell is a separate Cargo workspace
+
+`apps/gui/src-tauri` declares its own `[workspace]` root rather than joining the
+repository workspace. Two reasons:
+
+1. **Toolchain isolation.** The Tauri runtime links against platform webview
+   toolchains (`webkit2gtk` on Linux). Keeping it detached means
+   `cargo test --workspace` and the CLI/TUI release builds never require a
+   browser engine or the corresponding system packages.
+2. **Cross-compilation.** Tauri does not support meaningful cross-compilation,
+   so each OS must build on a native runner. A detached workspace gives the
+   bundler its own `target/` directory and lockfile, which is what the Tauri
+   CLI expects when the project is not the repository root.
+
+The shared editing logic lives in `crates/gui`, which *is* part of the main
+workspace and is covered by the normal test suite. The Tauri shell is a thin
+IPC adapter over it.
 
 The legacy 2.x Python tooling (`main.py`, `pyproject.toml`, `requirements.txt`) was removed on 19 October 2026 once the Rust core covered every workflow it provided. Its history remains in Git and the defects found in it are recorded in `docs/audit-2x.md`.
 

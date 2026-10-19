@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "BootAnimix 3.0 Studio",
         "width": 1340,
         "height": 860,
@@ -21,6 +22,36 @@
     ],
     "security": {
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi", "app", "dmg", "deb", "rpm", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "shortDescription": "Visual editor for Android boot animations",
+    "longDescription": "BootAnimix Studio is the desktop visual editor for Android boot animations. Inspect and edit descriptors, scrub the playback timeline, validate frames, and export verified ZIP_STORED bootanimation.zip archives or flashable Magisk modules.",
+    "category": "DeveloperTool",
+    "copyright": "Copyright (c) BootAnimix contributors",
+    "licenseFile": "../../../LICENSE",
+    "macOS": {
+      "minimumSystemVersion": "10.13",
+      "signingIdentity": "-"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+      }
     }
   }
 }

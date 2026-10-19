@@ -4,6 +4,13 @@ members = [
     "crates/core",
     "crates/cli",
     "crates/tui",
+    "crates/gui",
+]
+
+# The Tauri desktop shell is its own workspace. Keeping it detached means the
+# webview runtime dependencies (webkit2gtk on Linux) are never pulled into the
+# CLI/TUI builds or `cargo test --workspace` on CI.
+exclude = [
     "apps/gui/src-tauri",
 ]
 

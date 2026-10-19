@@ -1,6 +1,10 @@
 # Rust / Cargo
 /target/
+**/target/
 **/*.rs.bk
+
+# Tauri generated files
+apps/gui/src-tauri/gen/
 
 # Python
 __pycache__/

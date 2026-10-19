@@ -44,3 +44,49 @@ jobs:
         run: npm run check
       - name: Build production GUI bundle
         run: npm run build
+
+  # The Tauri shell is its own Cargo workspace, so it needs its own toolchain
+  # setup and the Linux webview development packages. This job only compiles
+  # the app — the release workflow produces the actual installers.
+  desktop:
+    name: Tauri Desktop Shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux webview dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libfuse2 \
+            file
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/gui/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: apps/gui
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+        working-directory: apps/gui/src-tauri
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets -- -D warnings
+        working-directory: apps/gui/src-tauri
+
+      - name: Build the desktop app
+        run: npx tauri build --debug --bundles deb
+        working-directory: apps/gui

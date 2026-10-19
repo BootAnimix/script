@@ -6,6 +6,24 @@ import type {
   WorkspaceSnapshot,
 } from './types';
 
+/** Result of a real archive build performed by the Rust core. */
+export interface BuildReport {
+  output_path: string;
+  total_frames: number;
+  compression_method: number;
+  invariants_verified: boolean;
+  warnings: string[];
+}
+
+/** Result of a real Magisk module export performed by the Rust core. */
+export interface MagiskExportReport {
+  output_path: string;
+  module_id: string;
+  target_path: string;
+  inner_archive_verified: boolean;
+  warnings: string[];
+}
+
 function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
@@ -309,18 +327,17 @@ export class StudioBridge {
   private current: ProjectManifest = createDefaultManifest();
   private undoStack: ProjectManifest[] = [];
   private redoStack: ProjectManifest[] = [];
-  private projectDir: string | null = '/workspace/pixel_monochrome_boot';
+  private projectDir: string | null = null;
   private dirty = false;
+
+  /** True when running inside the Tauri desktop shell. */
+  get isDesktop(): boolean {
+    return isTauriRuntime();
+  }
 
   async getSnapshot(selectedPartOnly: number | null = null): Promise<WorkspaceSnapshot> {
     if (isTauriRuntime()) {
-      try {
-        return await tauriInvoke<WorkspaceSnapshot>('gui_get_snapshot', {
-          selectedPartOnly,
-        });
-      } catch {
-        // Fall through to local state if Tauri command not initialized yet
-      }
+      return tauriInvoke<WorkspaceSnapshot>('gui_get_snapshot', { selectedPartOnly });
     }
     return {
       project_dir: this.projectDir,
@@ -337,32 +354,28 @@ export class StudioBridge {
     mutator: (draft: ProjectManifest) => void,
     selectedPartOnly: number | null = null,
   ): Promise<WorkspaceSnapshot> {
+    if (isTauriRuntime()) {
+      // The Rust session owns the history stack, so the manifest is sent over
+      // IPC and the authoritative undo/redo state comes back with the snapshot.
+      const draft = structuredClone(this.current);
+      mutator(draft);
+      return tauriInvoke<WorkspaceSnapshot>('gui_replace_manifest', {
+        manifest: draft,
+        selectedPartOnly,
+      });
+    }
+
     this.undoStack.push(structuredClone(this.current));
     if (this.undoStack.length > 80) this.undoStack.shift();
     this.redoStack = [];
     mutator(this.current);
     this.dirty = true;
-
-    if (isTauriRuntime()) {
-      try {
-        return await tauriInvoke<WorkspaceSnapshot>('gui_replace_manifest', {
-          manifest: this.current,
-          selectedPartOnly,
-        });
-      } catch {
-        // Fall through
-      }
-    }
     return this.getSnapshot(selectedPartOnly);
   }
 
   async undo(selectedPartOnly: number | null = null): Promise<WorkspaceSnapshot> {
     if (isTauriRuntime()) {
-      try {
-        return await tauriInvoke<WorkspaceSnapshot>('gui_undo', { selectedPartOnly });
-      } catch {
-        // Fall through
-      }
+      return tauriInvoke<WorkspaceSnapshot>('gui_undo', { selectedPartOnly });
     }
     const prev = this.undoStack.pop();
     if (prev) {
@@ -375,11 +388,7 @@ export class StudioBridge {
 
   async redo(selectedPartOnly: number | null = null): Promise<WorkspaceSnapshot> {
     if (isTauriRuntime()) {
-      try {
-        return await tauriInvoke<WorkspaceSnapshot>('gui_redo', { selectedPartOnly });
-      } catch {
-        // Fall through
-      }
+      return tauriInvoke<WorkspaceSnapshot>('gui_redo', { selectedPartOnly });
     }
     const next = this.redoStack.pop();
     if (next) {
@@ -390,15 +399,44 @@ export class StudioBridge {
     return this.getSnapshot(selectedPartOnly);
   }
 
+  /** Persist the manifest to `<projectDir>/project.bootanimix.json`. */
   async markSaved(): Promise<WorkspaceSnapshot> {
-    this.dirty = false;
     if (isTauriRuntime()) {
-      try {
-        return await tauriInvoke<WorkspaceSnapshot>('gui_save_project');
-      } catch {
-        // Fall through
-      }
+      return tauriInvoke<WorkspaceSnapshot>('gui_save_project', {
+        projectDir: this.projectDir,
+      });
     }
+    this.dirty = false;
     return this.getSnapshot(null);
+  }
+
+  /** Open a project directory and load its manifest. */
+  async openProject(projectDir: string): Promise<WorkspaceSnapshot> {
+    if (!isTauriRuntime()) {
+      throw new Error('Opening a project from disk requires the desktop app.');
+    }
+    const snap = await tauriInvoke<WorkspaceSnapshot>('gui_open_project', { projectDir });
+    this.projectDir = snap.project_dir;
+    this.current = snap.manifest;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.dirty = false;
+    return snap;
+  }
+
+  /** Build a verified ZIP_STORED boot animation archive on disk. */
+  async buildArchive(outputPath: string): Promise<BuildReport> {
+    if (!isTauriRuntime()) {
+      throw new Error('Building an archive requires the desktop app.');
+    }
+    return tauriInvoke<BuildReport>('gui_build_archive', { outputPath });
+  }
+
+  /** Export a flashable Magisk module on disk. */
+  async exportMagisk(outputPath: string): Promise<MagiskExportReport> {
+    if (!isTauriRuntime()) {
+      throw new Error('Exporting a Magisk module requires the desktop app.');
+    }
+    return tauriInvoke<MagiskExportReport>('gui_export_magisk', { outputPath });
   }
 }
