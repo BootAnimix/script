@@ -730,7 +730,28 @@ impl Drop for TerminalGuard {
 }
 
 fn main() -> io::Result<()> {
-    let initial_arg = std::env::args().nth(1).map(PathBuf::from);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args
+        .first()
+        .is_some_and(|a| a == "--help" || a == "-h" || a == "--version" || a == "-V")
+    {
+        if args.first().is_some_and(|a| a == "--version" || a == "-V") {
+            println!("bootanimix-tui {}", env!("CARGO_PKG_VERSION"));
+        } else {
+            println!("bootanimix-tui {}", env!("CARGO_PKG_VERSION"));
+            println!("Persistent terminal workspace for editing Android boot animations");
+            println!();
+            println!("USAGE:");
+            println!("    bootanimix-tui [PROJECT_PATH]");
+            println!();
+            println!(
+                "With no PROJECT_PATH, use `:open <path>` or `:import <src> <dst>` inside the TUI."
+            );
+            println!("Press `:` for the command bar (Tab autocompletes), `1`-`5` to switch tabs, and type `quit` in the command bar to exit.");
+        }
+        return Ok(());
+    }
+    let initial_arg = args.first().map(PathBuf::from);
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;

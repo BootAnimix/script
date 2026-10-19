@@ -1,0 +1,122 @@
+name: Release
+
+# Builds release binaries for Windows, macOS, and Linux and attaches them to a
+# GitHub Release whenever a version tag (v*) is pushed.
+#
+#   git tag v3.0.0 && git push origin v3.0.0
+#
+# Scope note: this ships the `bootanimix` (CLI) and `bootanimix-tui` binaries.
+# The Tauri GUI ("BootAnimix Studio") is NOT bundled here — desktop bundles
+# need per-OS webview toolchains and code signing, so the GUI is still built
+# from source (`apps/gui`: `npm install && npm run build`, then
+# `cargo build -p bootanimix-gui --release`).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test gate (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run unit, integration, and property tests
+        run: cargo test --workspace
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive_ext: zip
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive_ext: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive_ext: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build CLI and TUI (release mode)
+        run: cargo build --release -p bootanimix-cli -p bootanimix-tui --target ${{ matrix.target }}
+      - name: Smoke-test binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          ext=""
+          if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
+          bin_dir="target/${{ matrix.target }}/release"
+          "./${bin_dir}/bootanimix${ext}" --version
+          "./${bin_dir}/bootanimix-tui${ext}" --help
+          "./${bin_dir}/bootanimix${ext}" doctor
+      - name: Stage release directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          ext=""
+          if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
+          stage="bootanimix-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "${stage}"
+          cp "target/${{ matrix.target }}/release/bootanimix${ext}" "${stage}/"
+          cp "target/${{ matrix.target }}/release/bootanimix-tui${ext}" "${stage}/"
+          cp README.md LICENSE CHANGELOG.md "${stage}/"
+      - name: Package archive (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="bootanimix-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          tar -czf "${stage}.${{ matrix.archive_ext }}" "${stage}"
+          sha256sum "${stage}.${{ matrix.archive_ext }}" > "${stage}.${{ matrix.archive_ext }}.sha256"
+      - name: Package archive (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="bootanimix-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          7z a "${stage}.${{ matrix.archive_ext }}" "${stage}"
+          sha256sum "${stage}.${{ matrix.archive_ext }}" > "${stage}.${{ matrix.archive_ext }}.sha256"
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootanimix-${{ matrix.target }}
+          path: |
+            bootanimix-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}
+            bootanimix-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Show published files
+        run: ls -l dist
+      - name: Create GitHub Release with binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*

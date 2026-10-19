@@ -14,6 +14,10 @@
 - **CLI (`bootanimix`)**: Static-argument commands (`inspect`, `validate`, `import`, `build`, `preview`, `export magisk`, `info`, `doctor`) with `--json` output.
 - **TUI (`bootanimix-tui`)**: Persistent Ratatui terminal workspace with 5 panes, command bar autocomplete, and background worker threads.
 - **GUI (`apps/gui`)**: Tauri 2 + Svelte 5 + TypeScript visual editor featuring an asset browser, live preview canvas, filmstrip timeline, properties inspector, interactive diagnostics, undo/redo history, and reviewed export dialog.
+- **Release automation (`.github/workflows/release.yml`)**: Pushing a `v*` tag builds smoke-tested `bootanimix` and `bootanimix-tui` release binaries for Linux (x86_64), Windows (x86_64), and macOS (arm64 + x86_64) and publishes them to a GitHub Release with SHA-256 checksums.
+
+### Fixed
+- `bootanimix-tui` now handles `--help`/`-h` and `--version`/`-V` instead of treating them as a project path and opening the interactive TUI.
 
 ### Removed
 - Legacy 2.x Python tooling (`main.py`, `pyproject.toml`, `requirements.txt`). The Rust core and its three interfaces now cover every workflow the old script provided; the audit of that code lives on in `docs/audit-2x.md` and its history remains in Git.
