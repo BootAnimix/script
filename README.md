@@ -4,7 +4,7 @@
 
 1. **CLI (`bootanimix`)** — Automation-friendly static-argument command-line interface with human and `--json` output.
 2. **TUI (`bootanimix-tui`)** — Persistent interactive terminal workspace powered by Ratatui.
-3. **GUI (`apps/gui`)** — Visual desktop studio built with Tauri 2, Svelte 5, and TypeScript featuring an asset browser, playback preview canvas, filmstrip timeline, properties inspector, interactive diagnostics, undo/redo history, and Magisk module export.
+3. **GUI (`apps/gui`)** — Visual desktop studio built with Tauri 2, Svelte 5, TypeScript, and IBM's [Carbon Design System](https://carbondesignsystem.com/) featuring an asset browser, playback preview canvas, filmstrip timeline, properties inspector, interactive diagnostics, undo/redo history, and Magisk module export. Typography is IBM Plex, bundled locally so the desktop app never fetches fonts at runtime.
 
 ---
 

@@ -1,44 +1,106 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import {
+    Accordion,
+    AccordionItem,
+    Button,
+    InlineNotification,
+    Loading,
+    Modal,
+    NumberInput,
+    Search,
+    Select,
+    SelectItem,
+    Slider,
+    Tab,
+    TabContent,
+    Tabs,
+    TextInput,
+    Toggle,
+  } from 'carbon-components-svelte';
+  import {
+    Add,
+    CheckmarkFilled,
+    ChevronLeft,
+    ChevronRight,
+    Copy,
+    DocumentExport,
+    ErrorFilled,
+    FolderOpen,
+    Image as ImageIcon,
+    Information,
+    Pause,
+    Play,
+    Redo,
+    Save,
+    TrashCan,
+    Undo,
+    WarningAlt,
+  } from 'carbon-icons-svelte';
   import { StudioBridge } from './lib/bridge';
   import type {
     Diagnostic,
     PartDeclaration,
-    PlaybackMode,
     RepeatCount,
     RgbColor,
+    ScheduledFrame,
     WorkspaceSnapshot,
   } from './lib/types';
 
   const bridge = new StudioBridge();
 
-  let snapshot: WorkspaceSnapshot | null = $state(null);
+  /** Fixed render height of the preview canvas; width follows the animation aspect ratio. */
+  const CANVAS_HEIGHT = 420;
+
+  let snapshot = $state<WorkspaceSnapshot | null>(null);
   let selectedPartIdx = $state(0);
   let selectedFrameIdx = $state(0);
   let currentTick = $state(0);
   let isPlaying = $state(false);
-  let playbackSpeed = $state(1.0);
-  let canvasZoom = $state(1.0);
+  let playbackSpeed = $state(1);
+  let canvasZoom = $state(1);
   let previewMode = $state<'full' | 'selected_part'>('full');
   let assetFilter = $state('');
   let showExportModal = $state(false);
   let exportTargetKind = $state<'bootanimation' | 'magisk'>('bootanimation');
   let exportDestination = $state('dist/bootanimation.zip');
-  let lastBuildLog = $state<string | null>(null);
-  let statusBanner = $state('Ready — ZIP_STORED verification enforced');
+  let exporting = $state(false);
+  let buildResult = $state<{ kind: 'success' | 'error'; title: string; text: string } | null>(null);
+  let statusBanner = $state('Ready. Archive storage mode is verified on every build.');
   let newPartName = $state('');
+  let dockTab = $state(0);
 
-  let canvasEl: HTMLCanvasElement | undefined = $state();
+  let canvasEl = $state<HTMLCanvasElement | undefined>();
+  let stageEl = $state<HTMLDivElement | undefined>();
+  let fitScale = $state(1);
   let timerId: ReturnType<typeof setInterval> | null = null;
 
-  async function refresh(partFilter: number | null = null) {
-    const filter = previewMode === 'selected_part' ? selectedPartIdx : partFilter;
-    snapshot = await bridge.getSnapshot(filter);
-    if (snapshot && currentTick >= snapshot.schedule.frames.length) {
-      currentTick = Math.max(0, snapshot.schedule.frames.length - 1);
-    }
-    drawCanvasFrame();
-  }
+  let activePartDecl = $derived(snapshot?.manifest.descriptor.parts[selectedPartIdx]);
+  let activeProjectPart = $derived(snapshot?.manifest.parts[selectedPartIdx]);
+  let activeFrame = $derived<ScheduledFrame | undefined>(snapshot?.schedule.frames[currentTick]);
+  let totalFrames = $derived(snapshot?.validation.performance.total_frames ?? 0);
+  let diagnostics = $derived(snapshot?.validation.diagnostics ?? []);
+  let blockingCount = $derived(diagnostics.filter((d) => d.blocks_export || d.severity === 'error').length);
+  let warningCount = $derived(diagnostics.filter((d) => d.severity === 'warning' && !d.blocks_export).length);
+
+  let canvasWidth = $derived.by(() => {
+    const desc = snapshot?.manifest.descriptor;
+    if (!desc) return Math.round(CANVAS_HEIGHT * 0.45);
+    return Math.max(110, Math.round(CANVAS_HEIGHT * (desc.width / Math.max(1, desc.height))));
+  });
+
+  let filteredFrames = $derived.by(() => {
+    const frames = activeProjectPart?.frames ?? [];
+    const query = assetFilter.trim().toLowerCase();
+    return frames
+      .map((frame, index) => ({ frame, index }))
+      .filter(({ frame }) => !query || frame.relative_path.toLowerCase().includes(query));
+  });
+
+  let partFrameCount = $derived(activeProjectPart?.frames.length ?? 0);
+  let scheduleLength = $derived(snapshot?.schedule.frames.length ?? 0);
+  let displayWidth = $derived(Math.round(canvasWidth * fitScale * canvasZoom));
+  let displayHeight = $derived(Math.round(CANVAS_HEIGHT * fitScale * canvasZoom));
 
   onMount(async () => {
     await refresh();
@@ -47,6 +109,69 @@
   onDestroy(() => {
     stopPlayback();
   });
+
+  // The canvas is an immediate-mode drawing surface, so redraw it whenever the
+  // timeline position, geometry or loaded project changes.
+  $effect(() => {
+    void snapshot;
+    void currentTick;
+    void canvasWidth;
+    void canvasEl;
+    drawCanvasFrame();
+  });
+
+  // The device preview keeps its real aspect ratio but has to remain visible
+  // in short windows (the Tauri window can be as small as 980×640), so the
+  // stage reports its available box and the canvas is scaled to fit it.
+  $effect(() => {
+    const element = stageEl;
+    if (!element) return;
+
+    const measure = () => {
+      const note = element.querySelector<HTMLElement>('.stage-note');
+      const noteBlock = note ? note.offsetHeight + 10 : 0;
+      const availableHeight = Math.max(100, element.clientHeight - noteBlock - 34);
+      const availableWidth = Math.max(100, element.clientWidth - 58);
+      fitScale = Math.min(
+        1,
+        availableHeight / CANVAS_HEIGHT,
+        availableWidth / Math.max(1, canvasWidth),
+      );
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  });
+
+  async function refresh(partFilter: number | null = null) {
+    const filter = previewMode === 'selected_part' ? selectedPartIdx : partFilter;
+    let next = await bridge.getSnapshot(filter);
+
+    // A delete or an undo can leave the selection past the end of the project.
+    let resynced = false;
+    if (selectedPartIdx >= next.manifest.parts.length) {
+      selectedPartIdx = Math.max(0, next.manifest.parts.length - 1);
+      resynced = true;
+    }
+    if (selectedFrameIdx >= (next.manifest.parts[selectedPartIdx]?.frames.length ?? 0)) {
+      selectedFrameIdx = 0;
+    }
+
+    // In "selected part" scope the schedule was built for the stale index, so
+    // rebuild it once with the corrected selection.
+    if (previewMode === 'selected_part' && (resynced || filter !== selectedPartIdx)) {
+      next = await bridge.getSnapshot(selectedPartIdx);
+    }
+
+    snapshot = next;
+    if (next.schedule.frames.length === 0) {
+      currentTick = 0;
+    } else if (currentTick >= next.schedule.frames.length) {
+      currentTick = next.schedule.frames.length - 1;
+    }
+  }
 
   function startPlayback() {
     if (!snapshot || snapshot.schedule.frames.length === 0) return;
@@ -57,7 +182,6 @@
     timerId = setInterval(() => {
       if (!snapshot || snapshot.schedule.frames.length === 0) return;
       currentTick = (currentTick + 1) % snapshot.schedule.frames.length;
-      drawCanvasFrame();
     }, intervalMs);
   }
 
@@ -70,135 +194,150 @@
   }
 
   function togglePlayback() {
-    if (isPlaying) {
-      stopPlayback();
-    } else {
-      startPlayback();
-    }
+    if (isPlaying) stopPlayback();
+    else startPlayback();
   }
 
   function stepFrame(delta: number) {
     stopPlayback();
-    if (!snapshot || snapshot.schedule.frames.length === 0) return;
-    const len = snapshot.schedule.frames.length;
-    currentTick = (currentTick + delta + len) % len;
-    drawCanvasFrame();
+    if (scheduleLength === 0) return;
+    currentTick = (currentTick + delta + scheduleLength) % scheduleLength;
+  }
+
+  async function selectPart(idx: number) {
+    selectedPartIdx = idx;
+    selectedFrameIdx = 0;
+    if (previewMode === 'selected_part') {
+      await refresh(idx);
+      currentTick = 0;
+      return;
+    }
+    const firstTick = snapshot?.schedule.frames.findIndex((frame) => frame.part_index === idx);
+    if (firstTick !== undefined && firstTick >= 0) {
+      currentTick = firstTick;
+    }
+  }
+
+  function selectFrame(idx: number) {
+    selectedFrameIdx = idx;
+    const scheduled = snapshot?.schedule.frames.findIndex(
+      (frame) => frame.part_index === selectedPartIdx && frame.frame_index_in_part === idx,
+    );
+    if (scheduled !== undefined && scheduled >= 0) {
+      currentTick = scheduled;
+    }
   }
 
   function drawCanvasFrame() {
-    if (!canvasEl || !snapshot) return;
-    const ctx = canvasEl.getContext('2d');
+    const canvas = canvasEl;
+    if (!canvas || !snapshot) return;
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const w = canvasEl.width;
-    const h = canvasEl.height;
-    const sched = snapshot.schedule;
-    const active = sched.frames[currentTick];
+    const w = canvas.width;
+    const h = canvas.height;
+    const schedule = snapshot.schedule;
+    const frame = schedule.frames[currentTick];
 
-    const bg = active?.background_color ?? { r: 8, g: 10, b: 14 };
+    ctx.clearRect(0, 0, w, h);
+
+    const bg = frame?.background_color ?? { r: 8, g: 8, b: 8 };
     ctx.fillStyle = `rgb(${bg.r}, ${bg.g}, ${bg.b})`;
     ctx.fillRect(0, 0, w, h);
 
-    // Subtle device safe-area grid
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+    if (!frame) return;
 
-    if (!active) return;
+    const cx = w / 2;
+    const cy = h / 2;
+    const radius = Math.min(w, h) * 0.27;
+    const gradient = ctx.createLinearGradient(cx - radius, cy - radius, cx + radius, cy + radius);
+    gradient.addColorStop(0, '#fa4d56');
+    gradient.addColorStop(0.36, '#ee5396');
+    gradient.addColorStop(0.68, '#a56eff');
+    gradient.addColorStop(1, '#78a9ff');
 
-    // Render trim bounding box if present
-    if (active.trim) {
-      const sx = w / Math.max(1, sched.width);
-      const sy = h / Math.max(1, sched.height);
-      const tx = active.trim.x * sx;
-      const ty = active.trim.y * sy;
-      const tw = active.trim.width * sx;
-      const th = active.trim.height * sy;
+    ctx.save();
+    ctx.globalAlpha = frame.fade_opacity;
 
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.65)';
-      ctx.setLineDash([4, 3]);
-      ctx.strokeRect(tx, ty, tw, th);
+    // Trim bounding box reported by the frame assets.
+    if (frame.trim) {
+      const sx = w / Math.max(1, schedule.width);
+      const sy = h / Math.max(1, schedule.height);
+      ctx.strokeStyle = 'rgba(120, 169, 255, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.strokeRect(
+        frame.trim.x * sx + 0.5,
+        frame.trim.y * sy + 0.5,
+        frame.trim.width * sx,
+        frame.trim.height * sy,
+      );
       ctx.setLineDash([]);
     }
 
-    // Procedural vector emblem representing the active boot frame
-    const cx = w / 2;
-    const cy = h / 2;
-    const pulse = 0.68 + 0.32 * Math.sin((active.frame_index_in_part / 6) * Math.PI * 2);
-    const radius = Math.min(w, h) * 0.24 * pulse;
-
-    ctx.save();
-    ctx.globalAlpha = active.fade_opacity;
-
-    const grad = ctx.createRadialGradient(cx, cy, radius * 0.15, cx, cy, radius * 1.35);
-    if (active.part_index === 0) {
-      grad.addColorStop(0, '#60a5fa');
-      grad.addColorStop(1, 'rgba(37, 99, 235, 0)');
-    } else if (active.part_index === 1) {
-      grad.addColorStop(0, '#34d399');
-      grad.addColorStop(1, 'rgba(16, 185, 129, 0)');
-    } else {
-      grad.addColorStop(0, '#f472b6');
-      grad.addColorStop(1, 'rgba(219, 39, 119, 0)');
-    }
-
-    ctx.fillStyle = grad;
+    // The brand mark is the shape language of the animation preview.
+    const phase = (currentTick * 0.045) % (Math.PI * 2);
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = Math.max(7, radius * 0.34);
     ctx.beginPath();
-    ctx.arc(cx, cy, radius * 1.35, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = '#eef2f8';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.arc(
-      cx,
-      cy,
-      radius * 0.72,
-      active.frame_index_in_part * 0.35,
-      active.frame_index_in_part * 0.35 + Math.PI * 1.35,
-    );
+    ctx.arc(cx, cy, radius, phase, phase + Math.PI * 1.55);
     ctx.stroke();
 
-    // HUD overlay inside preview canvas
-    ctx.fillStyle = 'rgba(238, 242, 248, 0.88)';
-    ctx.font = '600 11px JetBrains Mono, monospace';
-    ctx.fillText(`${active.part_name} • frame #${active.frame_index_in_part}`, 12, 20);
-    if (active.is_pause_hold) {
-      ctx.fillStyle = '#f59e0b';
-      ctx.fillText('PAUSE HOLD', 12, 36);
+    if (frame.is_pause_hold) {
+      ctx.fillStyle = 'rgba(244, 244, 244, 0.9)';
+      ctx.fillRect(cx - 7, cy - 12, 4, 24);
+      ctx.fillRect(cx + 3, cy - 12, 4, 24);
     }
 
+    ctx.fillStyle = 'rgba(244, 244, 244, 0.72)';
+    ctx.font = '500 10px "IBM Plex Mono", monospace';
+    ctx.fillText(frame.part_name, 12, h - 30);
+    ctx.fillStyle = 'rgba(244, 244, 244, 0.48)';
+    ctx.fillText(
+      `F${String(frame.frame_index_in_part).padStart(4, '0')}  ·  ${frame.is_pause_hold ? 'PAUSE' : 'PLAY'}`,
+      12,
+      h - 16,
+    );
+
     if (snapshot.manifest.descriptor.show_progress) {
-      const pct = Math.min(
-        100,
-        Math.round(((currentTick + 1) / Math.max(1, sched.frames.length)) * 100),
-      );
-      ctx.fillStyle = 'rgba(238, 242, 248, 0.75)';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${pct}%`, cx, Math.round(h * 0.67));
-      ctx.textAlign = 'start';
+      const progress = (currentTick + 1) / Math.max(1, schedule.frames.length);
+      ctx.fillStyle = 'rgba(244, 244, 244, 0.16)';
+      ctx.fillRect(12, h - 8, w - 24, 2);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(12, h - 8, (w - 24) * progress, 2);
     }
 
     ctx.restore();
   }
 
+  async function switchScope(value: string) {
+    previewMode = value === 'selected_part' ? 'selected_part' : 'full';
+    stopPlayback();
+    await refresh();
+  }
+
+  async function changeSpeed(value: string) {
+    playbackSpeed = Number.parseFloat(value) || 1;
+    if (isPlaying) startPlayback();
+  }
+
   async function handleUndo() {
     stopPlayback();
-    snapshot = await bridge.undo(previewMode === 'selected_part' ? selectedPartIdx : null);
-    statusBanner = 'Undid last edit operation';
-    drawCanvasFrame();
+    await bridge.undo(previewMode === 'selected_part' ? selectedPartIdx : null);
+    await refresh();
+    statusBanner = 'Undid the last edit.';
   }
 
   async function handleRedo() {
     stopPlayback();
-    snapshot = await bridge.redo(previewMode === 'selected_part' ? selectedPartIdx : null);
-    statusBanner = 'Redid edit operation';
-    drawCanvasFrame();
+    await bridge.redo(previewMode === 'selected_part' ? selectedPartIdx : null);
+    await refresh();
+    statusBanner = 'Redid the last edit.';
   }
 
   async function handleSaveProject() {
     snapshot = await bridge.markSaved();
-    statusBanner = `Saved project manifest (${snapshot.manifest.name}/project.bootanimix.json)`;
+    statusBanner = `Saved ${snapshot.manifest.name}/project.bootanimix.json`;
   }
 
   async function handleOpenProject() {
@@ -208,12 +347,13 @@
     }
     try {
       const { open } = await import('@tauri-apps/plugin-dialog');
-      const picked = await open({ directory: true, multiple: false, title: 'Open BootAnimix Project' });
+      const picked = await open({ directory: true, multiple: false, title: 'Open BootAnimix project' });
       if (typeof picked !== 'string') return;
       snapshot = await bridge.openProject(picked);
+      selectedPartIdx = 0;
+      selectedFrameIdx = 0;
       currentTick = 0;
       statusBanner = `Opened ${picked}`;
-      drawCanvasFrame();
     } catch (err) {
       statusBanner = `Open failed: ${err instanceof Error ? err.message : String(err)}`;
     }
@@ -224,7 +364,7 @@
     try {
       const { save } = await import('@tauri-apps/plugin-dialog');
       const picked = await save({
-        title: 'Export Boot Animation Archive',
+        title: 'Export boot animation archive',
         defaultPath: exportDestination,
         filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
       });
@@ -236,32 +376,36 @@
     }
   }
 
-  async function updateHeaderNumber(field: 'width' | 'height' | 'fps', raw: string) {
-    const val = Math.max(1, Number.parseInt(raw, 10) || 1);
-    snapshot = await bridge.commitMutation(
-      (m) => {
-        m.descriptor[field] = val;
+  function applySnapshot(next: WorkspaceSnapshot, message?: string) {
+    snapshot = next;
+    if (message) statusBanner = message;
+  }
+
+  async function updateHeaderNumber(field: 'width' | 'height' | 'fps', raw: number) {
+    const value = Math.max(1, Math.round(raw || 1));
+    const next = await bridge.commitMutation(
+      (manifest) => {
+        manifest.descriptor[field] = value;
       },
       previewMode === 'selected_part' ? selectedPartIdx : null,
     );
-    statusBanner = `Updated header ${field.toUpperCase()} to ${val}`;
-    drawCanvasFrame();
+    applySnapshot(next, `Header ${field} set to ${value}.`);
   }
 
   async function toggleProgressFlag(checked: boolean) {
-    snapshot = await bridge.commitMutation(
-      (m) => {
-        m.descriptor.show_progress = checked;
+    const next = await bridge.commitMutation(
+      (manifest) => {
+        manifest.descriptor.show_progress = checked;
       },
       previewMode === 'selected_part' ? selectedPartIdx : null,
     );
-    drawCanvasFrame();
+    applySnapshot(next, `Boot progress indicator ${checked ? 'enabled' : 'disabled'}.`);
   }
 
   async function updatePartMode(modeKey: string) {
-    snapshot = await bridge.commitMutation(
-      (m) => {
-        const part = m.descriptor.parts[selectedPartIdx];
+    const next = await bridge.commitMutation(
+      (manifest) => {
+        const part = manifest.descriptor.parts[selectedPartIdx];
         if (!part) return;
         if (modeKey === 'p') part.mode = { mode: 'play_interruptible' };
         else if (modeKey === 'c') part.mode = { mode: 'play_to_completion' };
@@ -269,33 +413,32 @@
       },
       previewMode === 'selected_part' ? selectedPartIdx : null,
     );
-    drawCanvasFrame();
+    applySnapshot(next, `Playback mode for ${activePartDecl?.path ?? 'part'} updated.`);
   }
 
-  async function updatePartRepeat(rawCount: string) {
-    const num = Math.max(0, Number.parseInt(rawCount, 10) || 0);
-    const repeat: RepeatCount =
-      num === 0 ? { kind: 'infinite' } : { kind: 'finite', count: num };
-    snapshot = await bridge.commitMutation(
-      (m) => {
-        const part = m.descriptor.parts[selectedPartIdx];
+  async function updatePartRepeat(rawCount: number) {
+    const num = Math.max(0, Math.round(rawCount || 0));
+    const repeat: RepeatCount = num === 0 ? { kind: 'infinite' } : { kind: 'finite', count: num };
+    const next = await bridge.commitMutation(
+      (manifest) => {
+        const part = manifest.descriptor.parts[selectedPartIdx];
         if (part) part.repeat = repeat;
       },
       previewMode === 'selected_part' ? selectedPartIdx : null,
     );
-    drawCanvasFrame();
+    applySnapshot(next, num === 0 ? 'Part now loops until boot completes.' : `Part repeats ${num}×.`);
   }
 
-  async function updatePartPause(rawPause: string) {
-    const pause = Math.max(0, Number.parseInt(rawPause, 10) || 0);
-    snapshot = await bridge.commitMutation(
-      (m) => {
-        const part = m.descriptor.parts[selectedPartIdx];
+  async function updatePartPause(rawPause: number) {
+    const pause = Math.max(0, Math.round(rawPause || 0));
+    const next = await bridge.commitMutation(
+      (manifest) => {
+        const part = manifest.descriptor.parts[selectedPartIdx];
         if (part) part.pause_frames = pause;
       },
       previewMode === 'selected_part' ? selectedPartIdx : null,
     );
-    drawCanvasFrame();
+    applySnapshot(next, `Pause hold set to ${pause} frame${pause === 1 ? '' : 's'}.`);
   }
 
   async function updatePartBgHex(hex: string) {
@@ -306,14 +449,14 @@
     const b = Number.parseInt(clean.slice(4, 6), 16);
     if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return;
     const color: RgbColor = { r, g, b };
-    snapshot = await bridge.commitMutation(
-      (m) => {
-        const part = m.descriptor.parts[selectedPartIdx];
+    const next = await bridge.commitMutation(
+      (manifest) => {
+        const part = manifest.descriptor.parts[selectedPartIdx];
         if (part) part.background_color = color;
       },
       previewMode === 'selected_part' ? selectedPartIdx : null,
     );
-    drawCanvasFrame();
+    applySnapshot(next, `Background colour set to #${clean.toUpperCase()}.`);
   }
 
   async function addNewPart() {
@@ -323,11 +466,11 @@
       '',
     );
     if (!name || snapshot.manifest.parts.some((p) => p.name === name)) {
-      statusBanner = `Part '${name}' already exists or is invalid`;
+      statusBanner = `Part '${name}' already exists or is invalid.`;
       return;
     }
-    snapshot = await bridge.commitMutation((m) => {
-      const decl: PartDeclaration = {
+    const next = await bridge.commitMutation((manifest) => {
+      const declaration: PartDeclaration = {
         mode: { mode: 'play_interruptible' },
         repeat: { kind: 'finite', count: 1 },
         pause_frames: 0,
@@ -335,39 +478,33 @@
         background_color: { r: 0, g: 0, b: 0 },
         clock: null,
       };
-      m.descriptor.parts.push(decl);
-      m.parts.push({
+      manifest.descriptor.parts.push(declaration);
+      manifest.parts.push({
         name,
-        frames: [
-          {
-            relative_path: `assets/${name}/00000.png`,
-            trim: null,
-          },
-        ],
+        frames: [{ relative_path: `assets/${name}/00000.png`, trim: null }],
         audio_relative_path: null,
       });
     });
     newPartName = '';
-    selectedPartIdx = snapshot.manifest.parts.length - 1;
+    applySnapshot(next);
+    selectedPartIdx = next.manifest.parts.length - 1;
     selectedFrameIdx = 0;
-    statusBanner = `Added part '${name}'`;
-    drawCanvasFrame();
+    statusBanner = `Added part '${name}'.`;
   }
 
   async function deleteSelectedPart() {
     if (!snapshot || snapshot.manifest.parts.length <= 1) {
-      statusBanner = 'Cannot delete the last remaining part';
+      statusBanner = 'Cannot delete the last remaining part.';
       return;
     }
     const removedName = snapshot.manifest.parts[selectedPartIdx]?.name;
-    snapshot = await bridge.commitMutation((m) => {
-      m.descriptor.parts.splice(selectedPartIdx, 1);
-      m.parts.splice(selectedPartIdx, 1);
-    });
+    const next = await bridge.commitMutation((manifest) => {
+      manifest.descriptor.parts.splice(selectedPartIdx, 1);
+      manifest.parts.splice(selectedPartIdx, 1);
+    }, previewMode === 'selected_part' ? Math.max(0, selectedPartIdx - 1) : null);
     selectedPartIdx = Math.max(0, selectedPartIdx - 1);
     selectedFrameIdx = 0;
-    statusBanner = `Removed part '${removedName}'`;
-    drawCanvasFrame();
+    applySnapshot(next, `Removed part '${removedName}'.`);
   }
 
   async function moveSelectedFrame(delta: number) {
@@ -376,1224 +513,1727 @@
     if (!part) return;
     const target = selectedFrameIdx + delta;
     if (target < 0 || target >= part.frames.length) return;
-    snapshot = await bridge.commitMutation((m) => {
-      const frames = m.parts[selectedPartIdx].frames;
+    const next = await bridge.commitMutation((manifest) => {
+      const frames = manifest.parts[selectedPartIdx].frames;
       const [item] = frames.splice(selectedFrameIdx, 1);
       frames.splice(target, 0, item);
     });
     selectedFrameIdx = target;
-    statusBanner = `Moved frame #${selectedFrameIdx - delta} -> #${target} in ${part.name}`;
-    drawCanvasFrame();
+    applySnapshot(next, `Moved frame to position ${target + 1} in ${part.name}.`);
   }
 
   async function duplicateSelectedFrame() {
     if (!snapshot) return;
     const part = snapshot.manifest.parts[selectedPartIdx];
     if (!part || !part.frames[selectedFrameIdx]) return;
-    snapshot = await bridge.commitMutation((m) => {
-      const frames = m.parts[selectedPartIdx].frames;
+    const next = await bridge.commitMutation((manifest) => {
+      const frames = manifest.parts[selectedPartIdx].frames;
       const copy = structuredClone(frames[selectedFrameIdx]);
       frames.splice(selectedFrameIdx + 1, 0, copy);
     });
     selectedFrameIdx += 1;
-    statusBanner = `Duplicated frame #${selectedFrameIdx} in ${part.name}`;
-    drawCanvasFrame();
+    applySnapshot(next, `Duplicated frame in ${part.name}.`);
   }
 
   async function removeSelectedFrame() {
     if (!snapshot) return;
     const part = snapshot.manifest.parts[selectedPartIdx];
     if (!part || part.frames.length <= 1) {
-      statusBanner = 'Cannot remove the last remaining frame in a part';
+      statusBanner = 'Cannot remove the last remaining frame in a part.';
       return;
     }
-    snapshot = await bridge.commitMutation((m) => {
-      m.parts[selectedPartIdx].frames.splice(selectedFrameIdx, 1);
+    const next = await bridge.commitMutation((manifest) => {
+      manifest.parts[selectedPartIdx].frames.splice(selectedFrameIdx, 1);
     });
     selectedFrameIdx = Math.max(0, selectedFrameIdx - 1);
-    statusBanner = `Removed frame from ${part.name}`;
-    drawCanvasFrame();
+    applySnapshot(next, `Removed frame from ${part.name}.`);
+  }
+
+  async function commitMagiskId(value: string) {
+    const next = await bridge.commitMutation((manifest) => {
+      manifest.magisk.module_id = value;
+    });
+    applySnapshot(next, 'Magisk module ID updated.');
+  }
+
+  async function commitMagiskTarget(value: string) {
+    const next = await bridge.commitMutation((manifest) => {
+      manifest.magisk.target_path = value;
+    });
+    applySnapshot(next, `Overlay target set to /${value}.`);
+  }
+
+  async function toggleTransform(key: 'lossless_optimize_png' | 'generate_trim_txt', checked: boolean) {
+    const next = await bridge.commitMutation((manifest) => {
+      manifest.transforms[key] = checked;
+    });
+    applySnapshot(next);
   }
 
   function focusDiagnosticTarget(diag: Diagnostic) {
     if (!snapshot || !diag.file_or_part) return;
     const idx = snapshot.manifest.parts.findIndex(
-      (p) => diag.file_or_part === p.name || diag.file_or_part?.startsWith(`${p.name}/`),
+      (part) => diag.file_or_part === part.name || diag.file_or_part?.startsWith(`${part.name}/`),
     );
     if (idx >= 0) {
       selectedPartIdx = idx;
       selectedFrameIdx = 0;
-      statusBanner = `Focused part '${snapshot.manifest.parts[idx].name}' from diagnostic ${diag.code}`;
+      statusBanner = `Focused part '${snapshot.manifest.parts[idx].name}' from ${diag.code}.`;
     } else {
-      statusBanner = `Focused '${diag.file_or_part}' (${diag.code})`;
+      statusBanner = `Focused '${diag.file_or_part}' (${diag.code}).`;
     }
   }
 
-  function formatRgbHex(c: RgbColor | null | undefined): string {
-    if (!c) return '#000000';
+  function formatRgbHex(color: RgbColor | null | undefined): string {
+    if (!color) return '#000000';
     const hex = (n: number) => n.toString(16).padStart(2, '0').toUpperCase();
-    return `#${hex(c.r)}${hex(c.g)}${hex(c.b)}`;
+    return `#${hex(color.r)}${hex(color.g)}${hex(color.b)}`;
+  }
+
+  function openExport() {
+    buildResult = null;
+    showExportModal = true;
+  }
+
+  function setExportKind(kind: string) {
+    exportTargetKind = kind === 'magisk' ? 'magisk' : 'bootanimation';
+    exportDestination =
+      exportTargetKind === 'bootanimation'
+        ? 'dist/bootanimation.zip'
+        : `dist/${snapshot?.manifest.magisk.module_id ?? 'bootanimix_module'}.zip`;
   }
 
   async function executeReviewedExport() {
     if (!snapshot) return;
     if (snapshot.validation.outcome === 'invalid') {
-      lastBuildLog =
-        'Export refused: project has blocking validation errors. Resolve errors in Diagnostics first.';
+      buildResult = {
+        kind: 'error',
+        title: 'Export blocked',
+        text: 'Resolve the blocking diagnostics before writing an archive.',
+      };
       return;
     }
     if (!bridge.isDesktop) {
-      lastBuildLog =
-        'Export requires the desktop app: the browser preview has no filesystem access. Build BootAnimix Studio to write a real archive.';
+      buildResult = {
+        kind: 'error',
+        title: 'Desktop app required',
+        text: 'The browser preview has no filesystem access. Run the Tauri shell to write a real archive.',
+      };
       return;
     }
 
+    exporting = true;
+    buildResult = null;
     try {
       if (exportTargetKind === 'bootanimation') {
         const report = await bridge.buildArchive(exportDestination);
-        lastBuildLog = `Built '${report.output_path}' (${report.total_frames} frames across ${snapshot.manifest.parts.length} parts, compression=ZIP_STORED [${report.compression_method}] verified after reopen).`;
+        buildResult = {
+          kind: 'success',
+          title: 'Archive written',
+          text: `${report.output_path} · ${report.total_frames} frames across ${snapshot.manifest.parts.length} parts. Compression method ${report.compression_method}, verified after reopen.`,
+        };
         statusBanner = `Exported verified ${report.output_path}`;
       } else {
         const report = await bridge.exportMagisk(exportDestination);
-        lastBuildLog = `Exported Magisk module '${report.output_path}' (id=${report.module_id}, target=/${report.target_path}, inner bootanimation.zip ZIP_STORED verified).`;
+        buildResult = {
+          kind: 'success',
+          title: 'Magisk module written',
+          text: `${report.output_path} · id ${report.module_id} · overlay /${report.target_path}. Inner archive verified.`,
+        };
         statusBanner = `Exported Magisk module ${report.output_path}`;
       }
       await refresh();
     } catch (err) {
-      lastBuildLog = `Export failed: ${err instanceof Error ? err.message : String(err)}`;
-      statusBanner = 'Export failed — see build log';
+      buildResult = {
+        kind: 'error',
+        title: 'Export failed',
+        text: err instanceof Error ? err.message : String(err),
+      };
+      statusBanner = 'Export failed. See the build log.';
+    } finally {
+      exporting = false;
     }
   }
 </script>
 
 {#if snapshot}
-  {@const activePartDecl = snapshot.manifest.descriptor.parts[selectedPartIdx]}
-  {@const activeProjectPart = snapshot.manifest.parts[selectedPartIdx]}
-  {@const activeScheduledFrame = snapshot.schedule.frames[currentTick]}
-  {@const filteredFrames =
-    activeProjectPart?.frames.filter((f) =>
-      f.relative_path.toLowerCase().includes(assetFilter.toLowerCase()),
-    ) ?? []}
-
-  <div class="studio-shell">
-    <!-- Top Application Bar -->
-    <header class="topbar">
+  <div class="studio">
+    <header class="app-header">
       <div class="brand">
-        <span class="logo-dot"></span>
-        <strong>BootAnimix 3.0</strong>
-        <span class="project-badge mono">
-          {snapshot.manifest.name}{snapshot.dirty ? ' *' : ''}
-        </span>
+        <img class="brand-mark" src="/logo-128.png" alt="" width="26" height="26" />
+        <span class="brand-name">BootAnimix</span>
+        <span class="brand-product">Studio</span>
+        <span class="version mono">3.0</span>
       </div>
 
-      <div class="toolbar-group">
-        <button
-          onclick={handleOpenProject}
-          disabled={!bridge.isDesktop}
-          title="Open a BootAnimix project directory"
-        >
-          Open Project
-        </button>
-        <button onclick={handleSaveProject} title="Save Project Manifest">
-          Save Project
-        </button>
-        <button onclick={handleUndo} disabled={!snapshot.can_undo} title="Undo (Ctrl+Z)">
-          Undo
-        </button>
-        <button onclick={handleRedo} disabled={!snapshot.can_redo} title="Redo (Ctrl+Y)">
-          Redo
-        </button>
+      <div class="project-id">
+        <span class="project-name">{snapshot.manifest.name}</span>
+        {#if snapshot.dirty}
+          <span class="unsaved">Unsaved</span>
+        {/if}
       </div>
 
-      <div class="toolbar-group">
-        <span class="status-pill {snapshot.validation.outcome}">
-          {snapshot.validation.outcome === 'valid'
-            ? 'VALID • STORED (0)'
-            : snapshot.validation.outcome === 'valid_with_warnings'
-              ? 'VALID WITH WARNINGS'
-              : 'INVALID (BLOCKS EXPORT)'}
+      <div class="header-actions">
+        <Button kind="ghost" size="small" disabled={!bridge.isDesktop} onclick={handleOpenProject} icon={FolderOpen}>Open</Button>
+        <Button kind="ghost" size="small" onclick={handleSaveProject} icon={Save}>Save</Button>
+        <span class="divider" aria-hidden="true"></span>
+        <Button kind="ghost" size="small" iconDescription="Undo" disabled={!snapshot.can_undo} onclick={handleUndo} icon={Undo}></Button>
+        <Button kind="ghost" size="small" iconDescription="Redo" disabled={!snapshot.can_redo} onclick={handleRedo} icon={Redo}></Button>
+        <span class="divider" aria-hidden="true"></span>
+
+        <span class="validation-chip {snapshot.validation.outcome}">
+          {#if snapshot.validation.outcome === 'valid'}
+            <CheckmarkFilled size={16} />
+            <span>Valid</span>
+          {:else if snapshot.validation.outcome === 'valid_with_warnings'}
+            <WarningAlt size={16} />
+            <span>{warningCount} warning{warningCount === 1 ? '' : 's'}</span>
+          {:else}
+            <ErrorFilled size={16} />
+            <span>{blockingCount} blocking</span>
+          {/if}
         </span>
-        <button
-          class="primary"
-          onclick={() => {
-            lastBuildLog = null;
-            showExportModal = true;
-          }}
-        >
-          Build / Export...
-        </button>
+
+        <Button kind="primary" size="small" onclick={openExport} icon={DocumentExport}>Build &amp; export</Button>
       </div>
     </header>
 
-    <!-- Main 3-Column Editor Workspace -->
-    <div class="workspace-grid">
-      <!-- Left: Asset Browser & Part Navigator -->
-      <aside class="panel asset-browser">
-        <div class="panel-header">
-          <span>PARTS &amp; ASSETS</span>
-          <span class="mono muted">{snapshot.validation.performance.total_frames}f</span>
+    <div class="workspace">
+      <aside class="pane parts-pane">
+        <div class="pane-head">
+          <h2>Parts</h2>
+          <span class="count mono">{snapshot.manifest.parts.length}</span>
+          <span class="spacer"></span>
+          <Button kind="ghost" size="small" iconDescription="Remove selected part" disabled={snapshot.manifest.parts.length <= 1} onclick={deleteSelectedPart} icon={TrashCan}></Button>
         </div>
 
-        <div class="parts-list">
-          {#each snapshot.manifest.descriptor.parts as part, idx}
-            {@const pCount = snapshot.manifest.parts[idx]?.frames.length ?? 0}
+        <div class="part-list">
+          {#each snapshot.manifest.descriptor.parts as part, idx (part.path + idx)}
+            {@const frames = snapshot.manifest.parts[idx]?.frames.length ?? 0}
             <button
-              class="part-row {idx === selectedPartIdx ? 'selected' : ''}"
-              onclick={() => {
-                selectedPartIdx = idx;
-                selectedFrameIdx = 0;
-                if (previewMode === 'selected_part') refresh(idx);
-              }}
+              type="button"
+              class="part-row"
+              class:is-selected={idx === selectedPartIdx}
+              onclick={() => selectPart(idx)}
+              aria-current={idx === selectedPartIdx ? 'true' : undefined}
             >
-              <span class="part-badge mono">
+              <span class="mode-tag mono">
                 {part.mode.mode === 'play_interruptible'
                   ? 'p'
                   : part.mode.mode === 'play_to_completion'
                     ? 'c'
-                    : 'f'}
+                    : part.mode.mode === 'fade_out'
+                      ? 'f'
+                      : '$'}
               </span>
-              <span class="part-name mono">{part.path}</span>
-              <span class="loop-tag mono">
-                {part.repeat.kind === 'infinite' ? '∞ loop' : `${part.repeat.count}x`}
+              <span class="part-label">
+                <span class="part-name">{part.path}</span>
+                <span class="part-sub mono">
+                  {part.repeat.kind === 'infinite' ? '∞ loop' : `${part.repeat.count}×`}
+                  {#if part.pause_frames > 0}· {part.pause_frames}f hold{/if}
+                </span>
               </span>
-              <span class="muted mono">{pCount}f</span>
+              <span class="part-count mono">{frames}f</span>
             </button>
           {/each}
         </div>
 
-        <div class="part-add-bar">
-          <input
-            type="text"
-            placeholder="New part name (e.g. part3)"
+        <div class="new-part">
+          <TextInput
+            size="sm"
+            labelText="New part name"
+            hideLabel
+            placeholder="New part name"
             bind:value={newPartName}
           />
-          <button onclick={addNewPart}>+ Part</button>
-          <button
-            onclick={deleteSelectedPart}
-            disabled={snapshot.manifest.parts.length <= 1}
-            title="Remove selected part"
-          >
-            Del
-          </button>
+          <Button kind="tertiary" size="small" iconDescription="Add part" onclick={addNewPart} icon={Add}></Button>
         </div>
 
-        <div class="panel-subheader">
-          <span>FRAMES IN {activeProjectPart?.name ?? '-'}</span>
-          <input
-            type="search"
-            placeholder="Filter frames..."
+        <div class="pane-head sub">
+          <h2>Frames</h2>
+          <span class="count mono">{partFrameCount}</span>
+          <span class="spacer"></span>
+          <span class="pane-context mono">{activeProjectPart?.name ?? '—'}</span>
+        </div>
+
+        <div class="frame-search">
+          <Search
+            size="sm"
+            labelText="Filter frames"
+            hideLabel
+            placeholder="Filter frames"
             bind:value={assetFilter}
           />
         </div>
 
-        <div class="frame-asset-list">
-          {#each filteredFrames as frame, fIdx}
-            <button
-              class="asset-item {fIdx === selectedFrameIdx ? 'selected' : ''}"
-              onclick={() => {
-                selectedFrameIdx = fIdx;
-              }}
-            >
-              <span class="thumb-swatch" style="background: hsl({(fIdx * 28) % 360}, 65%, 45%)"></span>
-              <span class="asset-path mono">{frame.relative_path.split('/').pop()}</span>
-              {#if frame.trim}
-                <span class="trim-tag mono">
-                  {frame.trim.width}x{frame.trim.height}
-                </span>
-              {/if}
-            </button>
-          {/each}
+        <div class="frame-list">
+          {#if filteredFrames.length === 0}
+            <p class="empty">No frames match “{assetFilter}”.</p>
+          {:else}
+            {#each filteredFrames as { frame, index } (frame.relative_path + index)}
+              <button
+                type="button"
+                class="frame-row"
+                class:is-selected={index === selectedFrameIdx}
+                onclick={() => (selectedFrameIdx = index)}
+              >
+                <span class="frame-index mono">{String(index + 1).padStart(3, '0')}</span>
+                <span class="frame-path mono">{frame.relative_path.split('/').pop()}</span>
+                {#if frame.trim}
+                  <span class="frame-trim mono">{frame.trim.width}×{frame.trim.height}</span>
+                {/if}
+              </button>
+            {/each}
+          {/if}
         </div>
       </aside>
 
-      <!-- Center: Preview Canvas & Playback Controls -->
-      <main class="panel preview-stage">
-        <div class="panel-header">
+      <main class="pane stage-pane">
+        <div class="stage-head">
+          <h2>Preview</h2>
           <div class="stage-controls">
-            <span>PREVIEW CANVAS</span>
-            <select
-              value={previewMode}
-              onchange={(e) => {
-                previewMode = (e.currentTarget as HTMLSelectElement).value as
-                  | 'full'
-                  | 'selected_part';
-                refresh();
-              }}
+            <Select
+              size="sm"
+              inline
+              labelText="Scope"
+              selected={previewMode}
+              on:update={(event) => switchScope(String(event.detail))}
             >
-              <option value="full">Whole Animation</option>
-              <option value="selected_part">Selected Part Only</option>
-            </select>
-
-            <label class="inline-field">
-              <span>Speed</span>
-              <select
-                value={String(playbackSpeed)}
-                onchange={(e) => {
-                  playbackSpeed = Number.parseFloat(
-                    (e.currentTarget as HTMLSelectElement).value,
-                  );
-                  if (isPlaying) startPlayback();
-                }}
-              >
-                <option value="0.25">0.25x</option>
-                <option value="0.5">0.5x</option>
-                <option value="1">1.0x</option>
-                <option value="2">2.0x</option>
-              </select>
-            </label>
-
-            <label class="inline-field">
-              <span>Zoom</span>
-              <select
-                value={String(canvasZoom)}
-                onchange={(e) => {
-                  canvasZoom = Number.parseFloat(
-                    (e.currentTarget as HTMLSelectElement).value,
-                  );
-                }}
-              >
-                <option value="0.75">75%</option>
-                <option value="1">100% Fit</option>
-                <option value="1.25">125%</option>
-              </select>
-            </label>
+              <SelectItem value="full" text="Whole animation" />
+              <SelectItem value="selected_part" text="Selected part" />
+            </Select>
+            <Select
+              size="sm"
+              inline
+              labelText="Speed"
+              selected={String(playbackSpeed)}
+              on:update={(event) => changeSpeed(String(event.detail))}
+            >
+              <SelectItem value="0.25" text="0.25×" />
+              <SelectItem value="0.5" text="0.5×" />
+              <SelectItem value="1" text="1×" />
+              <SelectItem value="2" text="2×" />
+            </Select>
+            <Select
+              size="sm"
+              inline
+              labelText="Zoom"
+              selected={String(canvasZoom)}
+              on:update={(event) => (canvasZoom = Number.parseFloat(String(event.detail)) || 1)}
+            >
+              <SelectItem value="0.75" text="75%" />
+              <SelectItem value="1" text="100%" />
+              <SelectItem value="1.25" text="125%" />
+            </Select>
           </div>
-
-          <span class="mono muted">
-            {snapshot.manifest.descriptor.width}×{snapshot.manifest.descriptor.height} @ {snapshot
-              .manifest.descriptor.fps} FPS
+          <span class="stage-meta mono">
+            {snapshot.manifest.descriptor.width}×{snapshot.manifest.descriptor.height}
+            · {snapshot.manifest.descriptor.fps} fps
           </span>
         </div>
 
-        <div class="canvas-viewport">
-          <div
-            class="canvas-frame"
-            style="transform: scale({canvasZoom});"
-          >
+        <div class="stage" bind:this={stageEl}>
+          <div class="device" style="width: {displayWidth + 24}px">
             <canvas
               bind:this={canvasEl}
-              width="216"
-              height="420"
+              width={canvasWidth}
+              height={CANVAS_HEIGHT}
+              style="width: {displayWidth}px; height: {displayHeight}px"
             ></canvas>
           </div>
+          <p class="stage-note">
+            <Information size={14} />
+            Geometry and timing preview. Frame pixels stay on disk until export.
+          </p>
         </div>
 
-        <div class="transport-bar">
-          <button onclick={() => stepFrame(-1)} title="Step Backward 1 Frame">
-            ◀ Step
-          </button>
-          <button class="primary" onclick={togglePlayback}>
-            {isPlaying ? '⏸ Pause' : '▶ Play'}
-          </button>
-          <button onclick={() => stepFrame(1)} title="Step Forward 1 Frame">
-            Step ▶
-          </button>
+        <div class="transport">
+          <Button
+            kind="ghost"
+            size="small"
+            icon={ChevronLeft}
+            iconDescription="Previous frame"
+            onclick={() => stepFrame(-1)}
+          ></Button>
+          <Button
+            kind="primary"
+            size="small"
+            icon={isPlaying ? Pause : Play}
+            iconDescription={isPlaying ? 'Pause preview' : 'Play preview'}
+            onclick={togglePlayback}
+          ></Button>
+          <Button
+            kind="ghost"
+            size="small"
+            icon={ChevronRight}
+            iconDescription="Next frame"
+            onclick={() => stepFrame(1)}
+          ></Button>
 
-          <input
-            class="scrubber"
-            type="range"
-            min="0"
-            max={Math.max(0, snapshot.schedule.frames.length - 1)}
-            value={currentTick}
-            oninput={(e) => {
-              stopPlayback();
-              currentTick = Number.parseInt((e.currentTarget as HTMLInputElement).value, 10) || 0;
-              drawCanvasFrame();
-            }}
-          />
+          <div class="scrub">
+            <Slider
+              labelText="Timeline position"
+              hideLabel
+              hideTextInput
+              min={0}
+              max={Math.max(0, scheduleLength - 1)}
+              bind:value={currentTick}
+              on:input={() => stopPlayback()}
+            />
+          </div>
 
-          <span class="mono readout">
-            Tick {currentTick + 1}/{snapshot.schedule.frames.length} •
-            {activeScheduledFrame ? activeScheduledFrame.timestamp_seconds.toFixed(2) : '0.00'}s
-            {snapshot.schedule.is_infinite ? ' (∞ loop window)' : ''}
+          <span class="readout mono">
+            {(scheduleLength === 0 ? '000' : String(currentTick + 1).padStart(3, '0'))}/{String(
+              scheduleLength,
+            ).padStart(3, '0')}
+            <span class="readout-divider">·</span>
+            {activeFrame ? activeFrame.timestamp_seconds.toFixed(2) : '0.00'}s
+            {#if snapshot.schedule.is_infinite}<span class="readout-flag">∞</span>{/if}
           </span>
         </div>
 
         {#if snapshot.schedule.fidelity_warnings.length > 0}
-          <div class="fidelity-strip">
-            {#each snapshot.schedule.fidelity_warnings as note}
-              <div class="fidelity-item">ⓘ {note}</div>
-            {/each}
+          <div class="fidelity">
+            <span class="fidelity-icon"><WarningAlt size={16} /></span>
+            <ul>
+              {#each snapshot.schedule.fidelity_warnings as note}
+                <li>{note}</li>
+              {/each}
+            </ul>
           </div>
         {/if}
       </main>
 
-      <!-- Right: Properties Inspector -->
-      <aside class="panel inspector">
-        <div class="panel-header">
-          <span>PROPERTIES INSPECTOR</span>
-          <span class="mono muted">desc.txt</span>
+      <aside class="pane inspector-pane">
+        <div class="pane-head">
+          <h2>Properties</h2>
+          <span class="spacer"></span>
+          <span class="pane-context mono">desc.txt</span>
         </div>
 
         <div class="inspector-scroll">
-          <section class="inspector-section">
-            <h4>Animation Header</h4>
-            <div class="form-grid">
-              <label>
-                <span>Width (px)</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="16384"
+          <Accordion>
+            <AccordionItem title="Animation" open>
+              <div class="field-grid">
+                <NumberInput
+                  size="sm"
+                  labelText="Width (px)"
+                  min={1}
+                  max={16384}
                   value={snapshot.manifest.descriptor.width}
-                  onchange={(e) =>
-                    updateHeaderNumber('width', (e.currentTarget as HTMLInputElement).value)}
+                  on:change={(event) => updateHeaderNumber('width', Number(event.detail ?? 0))}
                 />
-              </label>
-              <label>
-                <span>Height (px)</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="16384"
+                <NumberInput
+                  size="sm"
+                  labelText="Height (px)"
+                  min={1}
+                  max={16384}
                   value={snapshot.manifest.descriptor.height}
-                  onchange={(e) =>
-                    updateHeaderNumber('height', (e.currentTarget as HTMLInputElement).value)}
+                  on:change={(event) => updateHeaderNumber('height', Number(event.detail ?? 0))}
                 />
-              </label>
-              <label>
-                <span>Frame Rate (FPS)</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="240"
+                <NumberInput
+                  size="sm"
+                  labelText="Frame rate (fps)"
+                  min={1}
+                  max={240}
                   value={snapshot.manifest.descriptor.fps}
-                  onchange={(e) =>
-                    updateHeaderNumber('fps', (e.currentTarget as HTMLInputElement).value)}
+                  on:change={(event) => updateHeaderNumber('fps', Number(event.detail ?? 0))}
                 />
-              </label>
-              <label class="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={snapshot.manifest.descriptor.show_progress}
-                  onchange={(e) =>
-                    toggleProgressFlag((e.currentTarget as HTMLInputElement).checked)}
-                />
-                <span>Show boot progress % ('p')</span>
-              </label>
-            </div>
-          </section>
+                <div class="toggle-field">
+                  <Toggle
+                    size="sm"
+                    labelText="Show boot progress"
+                    toggled={snapshot.manifest.descriptor.show_progress}
+                    on:toggle={(event) => toggleProgressFlag(event.detail.toggled)}
+                  />
+                  <p class="hint">Draws Android's boot percentage over the last part.</p>
+                </div>
+              </div>
+            </AccordionItem>
 
-          {#if activePartDecl}
-            <section class="inspector-section">
-              <h4>Selected Part: <span class="mono">{activePartDecl.path}</span></h4>
-              <div class="form-grid">
-                <label>
-                  <span>Playback Mode</span>
-                  <select
-                    value={activePartDecl.mode.mode === 'play_interruptible'
-                      ? 'p'
+            {#if activePartDecl}
+              <AccordionItem title={`Part · ${activePartDecl.path}`} open>
+                <div class="field-grid">
+                  <Select
+                    size="sm"
+                    labelText="Playback mode"
+                    selected={activePartDecl.mode.mode === 'fade_out'
+                      ? 'f'
                       : activePartDecl.mode.mode === 'play_to_completion'
                         ? 'c'
-                        : 'f'}
-                    onchange={(e) =>
-                      updatePartMode((e.currentTarget as HTMLSelectElement).value)}
+                        : activePartDecl.mode.mode === 'system_fallback'
+                          ? 'system'
+                          : 'p'}
+                    on:update={(event) => updatePartMode(String(event.detail))}
                   >
-                    <option value="p">p — Interruptible on boot exit</option>
-                    <option value="c">c — Play to completion</option>
-                    <option value="f">f — Fade out when interrupted</option>
-                  </select>
-                </label>
+                    <SelectItem value="p" text="p · interruptible on boot exit" />
+                    <SelectItem value="c" text="c · play to completion" />
+                    <SelectItem value="f" text="f · fade out when interrupted" />
+                    <SelectItem value="system" text="$SYSTEM · device fallback" />
+                  </Select>
 
-                <label>
-                  <span>Repeat Count (0 = Infinite ∞)</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="999"
-                    value={activePartDecl.repeat.kind === 'infinite'
-                      ? 0
-                      : activePartDecl.repeat.count}
-                    onchange={(e) =>
-                      updatePartRepeat((e.currentTarget as HTMLInputElement).value)}
+                  <NumberInput
+                    size="sm"
+                    labelText="Repeat count"
+                    helperText="0 loops until boot completes"
+                    min={0}
+                    max={999}
+                    value={activePartDecl.repeat.kind === 'infinite' ? 0 : activePartDecl.repeat.count}
+                    on:change={(event) => updatePartRepeat(Number(event.detail ?? 0))}
                   />
-                </label>
-
-                <label>
-                  <span>Pause Hold (in FRAMES, not sec)</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="10000"
+                  <NumberInput
+                    size="sm"
+                    labelText="Pause hold"
+                    helperText="Measured in frames"
+                    min={0}
+                    max={10000}
                     value={activePartDecl.pause_frames}
-                    onchange={(e) =>
-                      updatePartPause((e.currentTarget as HTMLInputElement).value)}
+                    on:change={(event) => updatePartPause(Number(event.detail ?? 0))}
                   />
-                </label>
 
-                <label>
-                  <span>Background Color (#RRGGBB)</span>
-                  <input
-                    type="text"
-                    class="mono"
-                    value={formatRgbHex(activePartDecl.background_color)}
-                    onchange={(e) =>
-                      updatePartBgHex((e.currentTarget as HTMLInputElement).value)}
-                  />
-                </label>
+                  <div class="color-field">
+                    <TextInput
+                      size="sm"
+                      labelText="Background colour"
+                      placeholder="#000000"
+                      class="mono"
+                      value={formatRgbHex(activePartDecl.background_color)}
+                      on:change={(event) => updatePartBgHex(String(event.detail ?? ''))}
+                    />
+                    <span
+                      class="swatch"
+                      style="background: {formatRgbHex(activePartDecl.background_color)}"
+                      aria-hidden="true"
+                    ></span>
+                  </div>
+                </div>
+              </AccordionItem>
+            {/if}
+
+            <AccordionItem title="Build transformations">
+              <p class="hint">
+                Source frames are never rewritten. These steps run only while the archive is built.
+              </p>
+              <div class="toggle-stack">
+                <Toggle
+                  size="sm"
+                  labelText="Lossless PNG optimisation"
+                  toggled={snapshot.manifest.transforms.lossless_optimize_png}
+                  on:toggle={(event) => toggleTransform('lossless_optimize_png', event.detail.toggled)}
+                />
+                <Toggle
+                  size="sm"
+                  labelText="Generate trim.txt per part"
+                  toggled={snapshot.manifest.transforms.generate_trim_txt}
+                  on:toggle={(event) => toggleTransform('generate_trim_txt', event.detail.toggled)}
+                />
               </div>
-            </section>
-          {/if}
+            </AccordionItem>
 
-          <section class="inspector-section">
-            <h4>Explicit Build Transformations</h4>
-            <p class="section-hint">
-              Source frames are never modified in place. Transformations run only during archive build.
-            </p>
-            <div class="form-grid">
-              <label class="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={snapshot.manifest.transforms.lossless_optimize_png}
-                  onchange={async (e) => {
-                    const checked = (e.currentTarget as HTMLInputElement).checked;
-                    snapshot = await bridge.commitMutation((m) => {
-                      m.transforms.lossless_optimize_png = checked;
-                    });
-                  }}
-                />
-                <span>Lossless PNG optimization (pixel-verified)</span>
-              </label>
-              <label class="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={snapshot.manifest.transforms.generate_trim_txt}
-                  onchange={async (e) => {
-                    const checked = (e.currentTarget as HTMLInputElement).checked;
-                    snapshot = await bridge.commitMutation((m) => {
-                      m.transforms.generate_trim_txt = checked;
-                    });
-                  }}
-                />
-                <span>Compute &amp; emit trim.txt per part</span>
-              </label>
-            </div>
-          </section>
-
-          <section class="inspector-section">
-            <h4>Magisk Overlay Configuration</h4>
-            <div class="form-grid">
-              <label>
-                <span>Module ID</span>
-                <input
-                  type="text"
+            <AccordionItem title="Magisk module">
+              <div class="field-grid">
+                <TextInput
+                  size="sm"
+                  labelText="Module ID"
                   class="mono"
                   value={snapshot.manifest.magisk.module_id}
-                  onchange={async (e) => {
-                    const val = (e.currentTarget as HTMLInputElement).value;
-                    snapshot = await bridge.commitMutation((m) => {
-                      m.magisk.module_id = val;
-                    });
-                  }}
+                  on:change={(event) => commitMagiskId(String(event.detail ?? ''))}
                 />
-              </label>
-              <label>
-                <span>Overlay Target Path</span>
-                <select
-                  value={snapshot.manifest.magisk.target_path}
-                  onchange={async (e) => {
-                    const val = (e.currentTarget as HTMLSelectElement).value;
-                    snapshot = await bridge.commitMutation((m) => {
-                      m.magisk.target_path = val;
-                    });
-                  }}
+                <Select
+                  size="sm"
+                  labelText="Overlay target"
+                  selected={snapshot.manifest.magisk.target_path}
+                  on:update={(event) => commitMagiskTarget(String(event.detail))}
                 >
-                  <option value="system/media/bootanimation.zip">
-                    /system/media/bootanimation.zip (AOSP / LineageOS)
-                  </option>
-                  <option value="system/product/media/bootanimation.zip">
-                    /system/product/media/bootanimation.zip (Pixel / Treble)
-                  </option>
-                  <option value="system/system_ext/media/bootanimation.zip">
-                    /system/system_ext/media/bootanimation.zip (OEM ext)
-                  </option>
-                </select>
-              </label>
-            </div>
-          </section>
+                  <SelectItem
+                    value="system/media/bootanimation.zip"
+                    text="/system/media · AOSP, LineageOS"
+                  />
+                  <SelectItem
+                    value="system/product/media/bootanimation.zip"
+                    text="/system/product/media · Pixel, Treble"
+                  />
+                  <SelectItem
+                    value="system/system_ext/media/bootanimation.zip"
+                    text="/system/system_ext/media · OEM"
+                  />
+                </Select>
+              </div>
+            </AccordionItem>
+          </Accordion>
         </div>
       </aside>
     </div>
 
-    <!-- Bottom: Filmstrip Timeline & Structured Diagnostics -->
-    <section class="bottom-dock">
-      <div class="timeline-pane">
-        <div class="panel-header">
-          <div class="timeline-header-left">
-            <span>TIMELINE &amp; FILMSTRIP ({activeProjectPart?.name ?? ''})</span>
-            <button onclick={() => moveSelectedFrame(-1)} title="Move Frame Left">
-              ← Move
-            </button>
-            <button onclick={() => moveSelectedFrame(1)} title="Move Frame Right">
-              Move →
-            </button>
-            <button onclick={duplicateSelectedFrame} title="Duplicate Selected Frame">
-              Duplicate Frame
-            </button>
-            <button
-              onclick={removeSelectedFrame}
-              disabled={(activeProjectPart?.frames.length ?? 0) <= 1}
-              title="Remove Selected Frame"
-            >
-              Remove Frame
-            </button>
-          </div>
-          <span class="mono muted">
-            {snapshot.validation.performance.has_infinite_loop
-              ? 'Contains ∞ Loop Part'
-              : `Finite Duration: ${snapshot.validation.performance.finite_duration_seconds?.toFixed(2) ?? 0}s`}
-          </span>
-        </div>
-
-        <div class="filmstrip-track">
-          {#if activeProjectPart}
-            {#each activeProjectPart.frames as fRef, idx}
-              <button
-                class="film-cell {idx === selectedFrameIdx ? 'active' : ''}"
-                onclick={() => {
-                  selectedFrameIdx = idx;
-                  const schedIdx = snapshot?.schedule.frames.findIndex(
-                    (sf) =>
-                      sf.part_index === selectedPartIdx && sf.frame_index_in_part === idx,
-                  );
-                  if (schedIdx !== undefined && schedIdx >= 0) {
-                    currentTick = schedIdx;
-                    drawCanvasFrame();
-                  }
-                }}
-              >
-                <span class="cell-index mono">#{String(idx).padStart(3, '0')}</span>
-                <span class="cell-bar" style="background: hsl({(idx * 32) % 360}, 70%, 50%)"></span>
-                <span class="cell-name mono">{fRef.relative_path.split('/').pop()}</span>
-              </button>
-            {/each}
-          {/if}
-        </div>
-      </div>
-
-      <div class="diagnostics-pane">
-        <div class="panel-header">
-          <span>DIAGNOSTICS ({snapshot.validation.diagnostics.length})</span>
-          <span class="mono muted">Click to inspect</span>
-        </div>
-
-        <div class="diag-list">
-          {#if snapshot.validation.diagnostics.length === 0}
-            <div class="diag-empty">
-              ✓ No validation errors or warnings. Archive invariants and desc.txt semantics are clean.
+    <section class="dock">
+      <Tabs bind:selected={dockTab}>
+        <Tab label={`Timeline · ${partFrameCount}`} />
+        <Tab label={`Diagnostics · ${diagnostics.length}`} />
+        <svelte:fragment slot="content">
+          <TabContent>
+                <div class="timeline">
+              <div class="timeline-bar">
+              <span class="timeline-label mono">{activeProjectPart?.name ?? 'no part'}</span>
+              <span class="spacer"></span>
+              <Button
+                kind="ghost"
+                size="small"
+                icon={ChevronLeft}
+                iconDescription="Move frame left"
+                disabled={selectedFrameIdx === 0}
+                onclick={() => moveSelectedFrame(-1)}
+              ></Button>
+              <Button
+                kind="ghost"
+                size="small"
+                icon={ChevronRight}
+                iconDescription="Move frame right"
+                disabled={selectedFrameIdx >= Math.max(0, partFrameCount - 1)}
+                onclick={() => moveSelectedFrame(1)}
+              ></Button>
+              <Button kind="ghost" size="small" onclick={duplicateSelectedFrame} icon={Copy}>Duplicate</Button>
+              <Button kind="ghost" size="small" disabled={partFrameCount <= 1} onclick={removeSelectedFrame} icon={TrashCan}>Remove</Button>
             </div>
-          {:else}
-            {#each snapshot.validation.diagnostics as d}
-              <button class="diag-row {d.severity}" onclick={() => focusDiagnosticTarget(d)}>
-                <span class="diag-code mono">{d.code}</span>
-                <span class="diag-msg">{d.message}</span>
-                <span class="diag-rem muted">{d.remediation}</span>
-              </button>
-            {/each}
-          {/if}
-        </div>
-      </div>
-    </section>
 
-    <!-- Status Bar -->
-    <footer class="statusbar">
-      <span>{statusBanner}</span>
-      <span class="mono">
-        Payload: {(snapshot.validation.performance.total_image_bytes / 1024).toFixed(1)} KiB •
-        Storage Policy: ZIP_STORED (0)
-      </span>
-    </footer>
-  </div>
+            <div class="filmstrip">
+              {#if activeProjectPart}
+                {#each activeProjectPart.frames as frame, idx (frame.relative_path + idx)}
+                  <button
+                    type="button"
+                    class="clip"
+                    class:is-active={idx === selectedFrameIdx}
+                    onclick={() => selectFrame(idx)}
+                  >
+                    <span class="clip-head mono">{String(idx + 1).padStart(3, '0')}</span>
+                    <span class="clip-thumb"><ImageIcon size={18} /></span>
+                    <span class="clip-name mono">{frame.relative_path.split('/').pop()}</span>
+                  </button>
+                {/each}
+              {:else}
+                <p class="empty">Select a part to see its frames.</p>
+              {/if}
+            </div>
+          </div>
+          </TabContent>
 
-  <!-- Export Review Modal -->
-  {#if showExportModal}
-    <div class="modal-backdrop" role="dialog" aria-modal="true">
-      <div class="modal-card">
-        <div class="panel-header">
-          <span>REVIEW &amp; EXPORT ARTIFACT</span>
-          <button onclick={() => (showExportModal = false)}>Close ✕</button>
-        </div>
-
-        <div class="modal-body">
-          <div class="form-grid">
-            <label>
-              <span>Export Type</span>
-              <select
-                value={exportTargetKind}
-                onchange={(e) => {
-                  exportTargetKind = (e.currentTarget as HTMLSelectElement).value as
-                    | 'bootanimation'
-                    | 'magisk';
-                  exportDestination =
-                    exportTargetKind === 'bootanimation'
-                      ? 'dist/bootanimation.zip'
-                      : `dist/${snapshot?.manifest.magisk.module_id ?? 'module'}.zip`;
-                }}
-              >
-                <option value="bootanimation">
-                  Standalone bootanimation.zip (Uncompressed ZIP_STORED)
-                </option>
-                <option value="magisk">
-                  Flashable Magisk Module ZIP (module.prop + verified inner bootanimation.zip)
-                </option>
-              </select>
-            </label>
-
-            <label>
-              <span>Output Destination</span>
-              <div class="path-row">
-                <input type="text" class="mono" bind:value={exportDestination} />
+          <TabContent>
+            <div class="diagnostics">
+            {#if diagnostics.length === 0}
+              <div class="clean-state">
+                <CheckmarkFilled size={20} />
+                <div>
+                  <p class="clean-title">No findings</p>
+                  <p class="hint">
+                    Archive structure and desc.txt semantics satisfy every invariant.
+                  </p>
+                </div>
+              </div>
+            {:else}
+              {#each diagnostics as diag (diag.code + diag.message)}
                 <button
                   type="button"
-                  onclick={handleBrowseDestination}
-                  disabled={!bridge.isDesktop}
-                  title="Choose output file"
+                  class="finding"
+                  class:is-error={diag.severity === 'error' || diag.blocks_export}
+                  onclick={() => focusDiagnosticTarget(diag)}
                 >
-                  Browse…
+                  <span class="finding-icon">
+                    {#if diag.severity === 'error' || diag.blocks_export}
+                      <ErrorFilled size={16} />
+                    {:else if diag.severity === 'warning'}
+                      <WarningAlt size={16} />
+                    {:else}
+                      <Information size={16} />
+                    {/if}
+                  </span>
+                  <span class="finding-body">
+                    <span class="finding-line">
+                      <span class="finding-code mono">{diag.code}</span>
+                      <span class="finding-message">{diag.message}</span>
+                    </span>
+                    <span class="finding-fix">{diag.remediation}</span>
+                  </span>
+                  {#if diag.blocks_export}
+                    <span class="finding-flag">blocks export</span>
+                  {/if}
                 </button>
-              </div>
-            </label>
-          </div>
-
-          <div class="summary-table mono">
-            <div><span>Dimensions / FPS:</span> <strong>{snapshot.manifest.descriptor.width}×{snapshot.manifest.descriptor.height} @ {snapshot.manifest.descriptor.fps} FPS</strong></div>
-            <div><span>Parts / Total Frames:</span> <strong>{snapshot.manifest.parts.length} parts / {snapshot.validation.performance.total_frames} frames</strong></div>
-            <div><span>Inner ZIP Storage Mode:</span> <strong>ZIP_STORED (Method 0 — Verified on Reopen)</strong></div>
-            <div><span>Transformations:</span> <strong>{snapshot.manifest.transforms.lossless_optimize_png ? 'Lossless PNG ' : ''}{snapshot.manifest.transforms.generate_trim_txt ? '+ trim.txt' : 'None (Source Bytes Preserved)'}</strong></div>
-            <div><span>Validation Status:</span> <strong>{snapshot.validation.outcome.toUpperCase()}</strong></div>
-            {#if exportTargetKind === 'magisk'}
-              <div><span>Magisk Module ID:</span> <strong>{snapshot.manifest.magisk.module_id}</strong></div>
-              <div><span>Overlay Path:</span> <strong>/{snapshot.manifest.magisk.target_path}</strong></div>
+              {/each}
             {/if}
-          </div>
+            </div>
+          </TabContent>
+        </svelte:fragment>
+      </Tabs>
+    </section>
 
-          {#if lastBuildLog}
-            <div class="build-result-box mono">{lastBuildLog}</div>
-          {/if}
+    <footer class="status-bar">
+      <span class="status-message">{statusBanner}</span>
+      <span class="status-meta mono">
+        {totalFrames} frames
+        <span class="status-sep">|</span>
+        {(snapshot.validation.performance.total_image_bytes / 1024).toFixed(1)} KiB
+        <span class="status-sep">|</span>
+        ZIP_STORED (0)
+      </span>
+    </footer>
 
-          <div class="modal-actions">
-            <button onclick={() => (showExportModal = false)}>Cancel</button>
-            <button
-              class="primary"
-              disabled={snapshot.validation.outcome === 'invalid'}
-              onclick={executeReviewedExport}
-            >
-              Verify &amp; Write Package
-            </button>
-          </div>
+    <Modal
+      open={showExportModal}
+      modalHeading="Build and export"
+      modalLabel="Artifact"
+      primaryButtonText="Verify and write"
+      secondaryButtonText="Cancel"
+      primaryButtonDisabled={snapshot.validation.outcome === 'invalid'}
+      primaryButtonLoading={exporting}
+      on:click:button--primary={executeReviewedExport}
+      on:click:button--secondary={() => (showExportModal = false)}
+      on:close={() => (showExportModal = false)}
+    >
+      <div class="export-form">
+        <Select
+          size="sm"
+          labelText="Export type"
+          selected={exportTargetKind}
+          on:update={(event) => setExportKind(String(event.detail))}
+        >
+          <SelectItem value="bootanimation" text="Standalone bootanimation.zip" />
+          <SelectItem value="magisk" text="Flashable Magisk module (.zip)" />
+        </Select>
+
+        <div class="destination">
+          <TextInput
+            size="sm"
+            labelText="Output destination"
+            class="mono"
+            bind:value={exportDestination}
+          />
+          <Button
+            kind="tertiary"
+            size="small"
+            disabled={!bridge.isDesktop}
+            onclick={handleBrowseDestination}
+          >
+            Browse…
+          </Button>
         </div>
+
+        <dl class="summary mono">
+          <div>
+            <dt>Geometry</dt>
+            <dd>
+              {snapshot.manifest.descriptor.width}×{snapshot.manifest.descriptor.height}
+              @ {snapshot.manifest.descriptor.fps} fps
+            </dd>
+          </div>
+          <div>
+            <dt>Content</dt>
+            <dd>{snapshot.manifest.parts.length} parts · {totalFrames} frames</dd>
+          </div>
+          <div>
+            <dt>Storage</dt>
+            <dd>ZIP_STORED, method 0, verified on reopen</dd>
+          </div>
+          <div>
+            <dt>Transformations</dt>
+            <dd>
+              {snapshot.manifest.transforms.lossless_optimize_png ? 'Lossless PNG' : '—'}
+              {snapshot.manifest.transforms.generate_trim_txt ? ' + trim.txt' : ''}
+            </dd>
+          </div>
+          <div>
+            <dt>Validation</dt>
+            <dd class="validation-value {snapshot.validation.outcome}">
+              {snapshot.validation.outcome.replaceAll('_', ' ')}
+            </dd>
+          </div>
+          {#if exportTargetKind === 'magisk'}
+            <div>
+              <dt>Module</dt>
+              <dd>{snapshot.manifest.magisk.module_id}</dd>
+            </div>
+            <div>
+              <dt>Overlay</dt>
+              <dd>/{snapshot.manifest.magisk.target_path}</dd>
+            </div>
+          {/if}
+        </dl>
+
+        {#if snapshot.validation.outcome === 'invalid'}
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title="Blocking diagnostics"
+            subtitle="Export stays disabled until every blocking finding is resolved."
+          />
+        {/if}
+
+        {#if buildResult}
+          <InlineNotification
+            kind={buildResult.kind}
+            lowContrast
+            hideCloseButton
+            title={buildResult.title}
+            subtitle={buildResult.text}
+          />
+        {/if}
       </div>
-    </div>
-  {/if}
+    </Modal>
+  </div>
+{:else}
+  <div class="boot">
+    <Loading description="Opening studio session" withOverlay={false} small />
+  </div>
 {/if}
 
 <style>
-  .studio-shell {
+  .studio {
     display: grid;
-    grid-template-rows: 42px 1fr 195px 26px;
-    width: 100vw;
-    height: 100vh;
-    background: var(--bg-app);
+    grid-template-rows: 48px minmax(0, 1fr) 216px 24px;
+    width: 100%;
+    height: 100%;
+    background: var(--studio-surface);
   }
 
-  .topbar {
+  .boot {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 0 14px;
-    background: var(--bg-panel);
-    border-bottom: 1px solid var(--border-subtle);
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ---------------------------------------------------------------- header */
+
+  .app-header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 0 12px 0 14px;
+    background: #161616;
+    border-bottom: 1px solid var(--studio-border);
   }
 
   .brand {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
+    flex-shrink: 0;
   }
 
-  .logo-dot {
-    width: 10px;
-    height: 10px;
+  .brand-mark {
+    display: block;
+    width: 26px;
+    height: 26px;
+    background: #0b0b0b;
     border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 8px var(--accent);
+    box-shadow: 0 0 0 1px #3d3d3d;
   }
 
-  .project-badge {
-    font-size: 11px;
-    padding: 2px 7px;
-    border-radius: 4px;
-    background: var(--bg-elevated);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-subtle);
+  .brand-name {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.1px;
   }
 
-  .toolbar-group {
+  .brand-product {
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--cds-text-02, #c6c6c6);
+  }
+
+  .version {
+    margin-left: 2px;
+    padding: 1px 5px;
+    font-size: 10px;
+    line-height: 14px;
+    color: var(--cds-text-05, #8d8d8d);
+    border: 1px solid var(--studio-border);
+  }
+
+  .project-id {
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
+    padding-left: 20px;
+    border-left: 1px solid var(--studio-border);
   }
 
-  .status-pill {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 8px;
-    border-radius: 4px;
-  }
-  .status-pill.valid {
-    background: rgba(16, 185, 129, 0.15);
-    color: var(--ok);
-  }
-  .status-pill.valid_with_warnings {
-    background: rgba(245, 158, 11, 0.16);
-    color: var(--warn);
-  }
-  .status-pill.invalid {
-    background: rgba(239, 68, 68, 0.18);
-    color: var(--err);
-  }
-
-  .workspace-grid {
-    display: grid;
-    grid-template-columns: 270px 1fr 320px;
+  .project-name {
     overflow: hidden;
-    min-height: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--cds-text-02, #c6c6c6);
+    font-size: 12px;
   }
 
-  .panel {
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-panel);
-    border-right: 1px solid var(--border-subtle);
-    min-height: 0;
+  .unsaved {
+    padding: 0 6px;
+    font-size: 10px;
+    line-height: 16px;
+    color: #f1c21b;
+    background: rgba(241, 194, 27, 0.12);
+    border: 1px solid rgba(241, 194, 27, 0.32);
   }
 
-  .panel.inspector {
-    border-right: none;
-    border-left: 1px solid var(--border-subtle);
-  }
-
-  .panel-header,
-  .panel-subheader {
+  .header-actions {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 7px 11px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    color: var(--text-secondary);
-    background: var(--bg-elevated);
-    border-bottom: 1px solid var(--border-subtle);
+    gap: 2px;
+    margin-left: auto;
   }
 
-  .parts-list {
+  .divider {
+    width: 1px;
+    height: 20px;
+    margin: 0 8px;
+    background: var(--studio-border);
+  }
+
+  .validation-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    margin-right: 10px;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border: 1px solid transparent;
+  }
+
+  .validation-chip :global(svg) {
+    fill: currentColor;
+  }
+
+  .validation-chip.valid {
+    color: #42be65;
+    background: rgba(66, 190, 101, 0.1);
+    border-color: rgba(66, 190, 101, 0.28);
+  }
+
+  .validation-chip.valid_with_warnings {
+    color: #f1c21b;
+    background: rgba(241, 194, 27, 0.1);
+    border-color: rgba(241, 194, 27, 0.28);
+  }
+
+  .validation-chip.invalid {
+    color: #fa4d56;
+    background: rgba(250, 77, 86, 0.1);
+    border-color: rgba(250, 77, 86, 0.3);
+  }
+
+  /* ------------------------------------------------------------- workspace */
+
+  .workspace {
+    display: grid;
+    grid-template-columns: 264px minmax(0, 1fr) 336px;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .pane {
     display: flex;
     flex-direction: column;
-    padding: 6px;
-    gap: 4px;
-    border-bottom: 1px solid var(--border-subtle);
+    min-height: 0;
+    min-width: 0;
+    background: #161616;
+  }
+
+  .parts-pane {
+    border-right: 1px solid var(--studio-border);
+  }
+
+  .inspector-pane {
+    border-left: 1px solid var(--studio-border);
+  }
+
+  .pane-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 10px 0 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--studio-divider);
+  }
+
+  .pane-head.sub {
+    border-top: 1px solid var(--studio-divider);
+  }
+
+  .pane-head h2 {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.16px;
+    color: var(--cds-text-01, #f4f4f4);
+  }
+
+  .count {
+    min-width: 18px;
+    padding: 0 4px;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+    color: var(--cds-text-05, #8d8d8d);
+    background: #262626;
+  }
+
+  .pane-context {
+    font-size: 10px;
+    color: var(--cds-text-05, #8d8d8d);
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .part-list {
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    gap: 1px;
   }
 
   .part-row {
     display: grid;
-    grid-template-columns: 22px 1fr auto auto;
-    align-items: center;
-    gap: 6px;
-    text-align: left;
-    padding: 6px 8px;
-    background: transparent;
-  }
-
-  .part-row.selected {
-    background: var(--accent-soft);
-    border-color: var(--accent);
-  }
-
-  .part-badge {
-    display: inline-block;
-    text-align: center;
-    padding: 1px 4px;
-    border-radius: 3px;
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  .loop-tag {
-    font-size: 11px;
-    color: var(--text-secondary);
-  }
-
-  .part-add-bar {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    gap: 5px;
-    padding: 6px;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .frame-asset-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-
-  .asset-item {
-    display: flex;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
     width: 100%;
+    padding: 6px 8px;
     text-align: left;
+    color: var(--cds-text-01, #f4f4f4);
     background: transparent;
-    padding: 4px 7px;
+    border: 0;
+    border-left: 2px solid transparent;
+    cursor: pointer;
   }
 
-  .asset-item.selected {
-    background: var(--accent-soft);
-    border-color: var(--accent);
+  .part-row:hover {
+    background: #262626;
   }
 
-  .thumb-swatch {
-    width: 12px;
-    height: 12px;
-    border-radius: 3px;
-    flex-shrink: 0;
+  .part-row.is-selected {
+    background: #262626;
+    border-left-color: #4589ff;
   }
 
-  .asset-path {
-    flex: 1;
+  .mode-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 18px;
+    font-size: 10px;
+    color: var(--cds-text-02, #c6c6c6);
+    border: 1px solid #525252;
+  }
+
+  .part-label {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .part-name {
     overflow: hidden;
+    font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .trim-tag {
+  .part-sub {
     font-size: 10px;
-    color: var(--text-secondary);
+    color: var(--cds-text-05, #8d8d8d);
   }
 
-  .preview-stage {
-    background: var(--bg-app);
+  .part-count {
+    font-size: 10px;
+    color: var(--cds-text-03, #6f6f6f);
+  }
+
+  .new-part {
     display: flex;
-    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    padding: 8px 10px 10px 12px;
+    border-bottom: 1px solid var(--studio-divider);
+  }
+
+  .new-part :global(.bx--form-item) {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .frame-search {
+    padding: 8px 10px 8px 12px;
+    flex-shrink: 0;
+  }
+
+  .frame-search :global(.bx--search) {
+    border-bottom: 1px solid #393939;
+  }
+
+  .frame-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 4px 8px;
+  }
+
+  .frame-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 4px 8px;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-left: 2px solid transparent;
+    cursor: pointer;
+  }
+
+  .frame-row:hover {
+    background: #262626;
+  }
+
+  .frame-row.is-selected {
+    background: #262626;
+    border-left-color: #4589ff;
+  }
+
+  .frame-index {
+    font-size: 10px;
+    color: var(--cds-text-03, #6f6f6f);
+  }
+
+  .frame-path {
+    flex: 1;
+    overflow: hidden;
+    font-size: 11px;
+    color: var(--cds-text-02, #c6c6c6);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .frame-trim {
+    font-size: 9px;
+    color: var(--cds-text-03, #6f6f6f);
+  }
+
+  .empty {
+    padding: 12px;
+    font-size: 11px;
+    color: var(--cds-text-05, #8d8d8d);
+  }
+
+  /* ------------------------------------------------------------ stage pane */
+
+  .stage-pane {
+    background: #1c1c1c;
+  }
+
+  .stage-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 40px;
+    padding: 0 12px 0 16px;
+    flex-shrink: 0;
+    overflow: hidden;
+    border-bottom: 1px solid var(--studio-divider);
+    background: #161616;
+  }
+
+  .stage-head h2 {
+    font-size: 12px;
+    font-weight: 600;
   }
 
   .stage-controls {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 14px;
+    padding-left: 14px;
+    border-left: 1px solid var(--studio-border);
   }
 
-  .inline-field {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
+  .stage-controls :global(.bx--select) {
+    width: auto;
   }
 
-  .canvas-viewport {
-    flex: 1;
+  .stage-controls :global(.bx--select-input) {
+    padding-right: 28px;
+    background: #1c1c1c;
+  }
+
+  .stage-meta {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--cds-text-05, #8d8d8d);
+  }
+
+  .stage {
+    position: relative;
     display: flex;
+    flex: 1;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 10px;
+    min-height: 0;
+    padding: 16px;
     overflow: hidden;
-    position: relative;
+    background-color: #141414;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: center;
   }
 
-  .canvas-frame {
-    padding: 8px;
-    border-radius: 12px;
-    background: #07090d;
-    border: 1px solid var(--border-subtle);
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
-    transition: transform 0.15s ease;
+  .device {
+    padding: 12px;
+    background: #0b0b0b;
+    border: 1px solid #393939;
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
   }
 
-  canvas {
+  .device canvas {
     display: block;
     border-radius: 6px;
+    background: #080808;
   }
 
-  .transport-bar {
+  .stage-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--cds-text-03, #6f6f6f);
+  }
+
+  @media (max-width: 1180px) {
+    .stage-head {
+      flex-wrap: wrap;
+      height: auto;
+      min-height: 40px;
+      padding: 6px 12px;
+      row-gap: 6px;
+    }
+
+    .stage-controls {
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      padding-left: 10px;
+    }
+
+    .stage-meta {
+      display: none;
+    }
+  }
+
+  @media (max-height: 720px) {
+    .studio {
+      grid-template-rows: 48px minmax(0, 1fr) 176px 24px;
+    }
+
+    .stage {
+      gap: 6px;
+      padding: 8px;
+    }
+
+    .stage-note {
+      display: none;
+    }
+  }
+
+  .stage-note :global(svg) {
+    fill: currentColor;
+  }
+
+  .transport {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    background: var(--bg-panel);
-    border-top: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+    border-top: 1px solid var(--studio-divider);
+    background: #161616;
   }
 
-  .scrubber {
+  .scrub {
     flex: 1;
-    padding: 0;
+    min-width: 120px;
+    padding: 0 4px;
+  }
+
+  .scrub :global(.bx--slider) {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    margin: 0;
+  }
+
+  .scrub :global(.bx--slider-container) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .scrub :global(.bx--slider__track) {
+    min-width: 0;
+  }
+
+  .scrub :global(.bx--slider__range-label) {
+    display: none;
   }
 
   .readout {
-    font-size: 11px;
-    color: var(--text-secondary);
-    min-width: 195px;
-    text-align: right;
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+    font-size: 10px;
+    color: var(--cds-text-02, #c6c6c6);
+    white-space: nowrap;
   }
 
-  .fidelity-strip {
-    background: rgba(245, 158, 11, 0.09);
-    border-top: 1px solid rgba(245, 158, 11, 0.25);
-    padding: 5px 12px;
-    font-size: 11px;
-    color: #fbbf24;
+  .readout-divider {
+    color: var(--cds-text-03, #6f6f6f);
   }
+
+  .readout-flag {
+    color: #78a9ff;
+  }
+
+  .fidelity {
+    display: flex;
+    gap: 8px;
+    max-height: 66px;
+    overflow-y: auto;
+    padding: 6px 14px 8px;
+    font-size: 10px;
+    color: #f1c21b;
+    background: rgba(241, 194, 27, 0.06);
+    border-top: 1px solid rgba(241, 194, 27, 0.2);
+  }
+
+  .fidelity-icon {
+    padding-top: 1px;
+  }
+
+  .fidelity-icon :global(svg) {
+    fill: currentColor;
+  }
+
+  .fidelity ul {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  /* -------------------------------------------------------------- inspector */
 
   .inspector-scroll {
     flex: 1;
-    overflow-y: auto;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .inspector-section {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    padding: 10px;
-  }
-
-  .inspector-section h4 {
-    font-size: 12px;
-    margin-bottom: 8px;
-    color: var(--text-primary);
-  }
-
-  .section-hint {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-bottom: 8px;
-  }
-
-  .form-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .form-grid label {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 11px;
-    color: var(--text-secondary);
-  }
-
-  .form-grid label.checkbox-row {
-    flex-direction: row;
-    align-items: center;
-    gap: 7px;
-    color: var(--text-primary);
-  }
-
-  .path-row {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-
-  .path-row input {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-
-  .bottom-dock {
-    display: grid;
-    grid-template-columns: 1fr 410px;
-    border-top: 1px solid var(--border-subtle);
-    background: var(--bg-panel);
     min-height: 0;
-  }
-
-  .timeline-pane {
-    display: flex;
-    flex-direction: column;
-    border-right: 1px solid var(--border-subtle);
-    min-width: 0;
-  }
-
-  .timeline-header-left {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .filmstrip-track {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 10px;
-    overflow-x: auto;
-  }
-
-  .film-cell {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: space-between;
-    min-width: 92px;
-    height: 112px;
-    padding: 7px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    flex-shrink: 0;
-  }
-
-  .film-cell.active {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-  }
-
-  .cell-index {
-    font-size: 10px;
-    color: var(--text-secondary);
-  }
-
-  .cell-bar {
-    width: 100%;
-    height: 44px;
-    border-radius: 4px;
-  }
-
-  .cell-name {
-    font-size: 10px;
-    color: var(--text-primary);
-    max-width: 78px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .diagnostics-pane {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-
-  .diag-list {
-    flex: 1;
     overflow-y: auto;
-    padding: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    padding: 0 12px 16px;
   }
 
-  .diag-empty {
-    padding: 12px;
-    color: var(--ok);
+  .inspector-scroll :global(.bx--accordion__item) {
+    border-bottom: 1px solid var(--studio-divider);
+  }
+
+  .inspector-scroll :global(.bx--accordion__heading) {
+    height: 36px;
+  }
+
+  .inspector-scroll :global(.bx--accordion__title) {
     font-size: 12px;
+    color: var(--cds-text-01, #f4f4f4);
   }
 
-  .diag-row {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    text-align: left;
-    padding: 6px 8px;
+  .inspector-scroll :global(.bx--accordion__content) {
+    padding-right: 4px;
+    padding-left: 4px;
   }
 
-  .diag-row.error {
-    border-left: 3px solid var(--err);
-  }
-  .diag-row.warning {
-    border-left: 3px solid var(--warn);
-  }
-
-  .diag-code {
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--text-secondary);
-  }
-
-  .diag-msg {
-    font-size: 11px;
-    color: var(--text-primary);
-  }
-
-  .diag-rem {
-    font-size: 10px;
-  }
-
-  .statusbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 12px;
-    font-size: 11px;
-    color: var(--text-secondary);
-    background: var(--bg-elevated);
-    border-top: 1px solid var(--border-subtle);
-  }
-
-  .muted {
-    color: var(--text-muted);
-  }
-
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(5, 7, 11, 0.75);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 50;
-  }
-
-  .modal-card {
-    width: 540px;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
-  }
-
-  .modal-body {
-    padding: 14px;
+  .field-grid {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    padding-bottom: 14px;
   }
 
-  .summary-table {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    padding: 10px;
+  .field-grid :global(.bx--label) {
     font-size: 11px;
+    color: var(--cds-text-02, #c6c6c6);
+  }
+
+  .field-grid :global(.bx--form__helper-text) {
+    font-size: 10px;
+    color: var(--cds-text-05, #8d8d8d);
+  }
+
+  .field-grid :global(.bx--number) {
+    width: 100%;
+  }
+
+  .toggle-field {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 2px;
   }
 
-  .summary-table div {
+  .toggle-stack {
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 14px;
   }
 
-  .build-result-box {
-    padding: 9px;
-    border-radius: 5px;
-    background: rgba(16, 185, 129, 0.14);
-    border: 1px solid var(--ok);
-    color: var(--ok);
-    font-size: 11px;
-  }
-
-  .modal-actions {
+  .color-field {
     display: flex;
-    justify-content: flex-end;
+    align-items: flex-end;
     gap: 8px;
+  }
+
+  .color-field :global(.bx--form-item) {
+    flex: 1;
+  }
+
+  .swatch {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border: 1px solid #525252;
+  }
+
+  .hint {
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--cds-text-05, #8d8d8d);
+  }
+
+  /* ------------------------------------------------------------------- dock */
+
+  .dock {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-top: 1px solid var(--studio-border);
+    background: #161616;
+  }
+
+  .dock :global(.bx--tabs) {
+    flex: 0 0 36px;
+    height: 36px;
+  }
+
+  .dock :global(.bx--tabs__nav) {
+    padding-left: 8px;
+  }
+
+  .dock :global(.bx--tabs__nav-item) {
+    width: auto;
+  }
+
+  .dock :global(.bx--tabs__nav-link) {
+    height: 36px;
+    padding: 0 14px;
+    font-size: 12px;
+    line-height: 36px;
+    border-bottom: 2px solid transparent;
+  }
+
+  .dock :global(.bx--tabs__nav-item--selected .bx--tabs__nav-link) {
+    border-bottom-color: #f4f4f4;
+  }
+
+  .dock :global(.bx--tab-content) {
+    flex: 1;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .timeline {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .timeline-bar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 8px 4px 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--studio-divider);
+  }
+
+  .timeline-label {
+    font-size: 10px;
+    color: var(--cds-text-05, #8d8d8d);
+  }
+
+  .filmstrip {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    flex: 1;
+    min-height: 0;
+    padding: 8px 10px 10px;
+    overflow-x: auto;
+  }
+
+  .clip {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 104px;
+    min-height: 88px;
+    flex-shrink: 0;
+    padding: 6px;
+    text-align: left;
+    background: #1c1c1c;
+    border: 1px solid #2a2a2a;
+    cursor: pointer;
+  }
+
+  .clip:hover {
+    border-color: #525252;
+  }
+
+  .clip.is-active {
+    border-color: #4589ff;
+    box-shadow: inset 0 0 0 1px #4589ff;
+  }
+
+  .clip-head {
+    font-size: 9px;
+    color: var(--cds-text-03, #6f6f6f);
+  }
+
+  .clip-thumb {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    color: #525252;
+    background-color: #0f0f0f;
+    background-image:
+      linear-gradient(45deg, #1a1a1a 25%, transparent 25%),
+      linear-gradient(-45deg, #1a1a1a 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #1a1a1a 75%),
+      linear-gradient(-45deg, transparent 75%, #1a1a1a 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  }
+
+  .clip.is-active .clip-thumb {
+    color: #78a9ff;
+  }
+
+  .clip-name {
+    overflow: hidden;
+    font-size: 9px;
+    color: var(--cds-text-02, #c6c6c6);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .diagnostics {
+    height: 100%;
+    overflow-y: auto;
+    padding: 4px 6px 8px;
+  }
+
+  .clean-state {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px 12px;
+    color: #42be65;
+  }
+
+  .clean-title {
+    font-size: 12px;
+    color: #42be65;
+  }
+
+  .finding {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    padding: 7px 10px;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-left: 2px solid rgba(241, 194, 27, 0.7);
+    cursor: pointer;
+  }
+
+  .finding:hover {
+    background: #262626;
+  }
+
+  .finding.is-error {
+    border-left-color: #fa4d56;
+  }
+
+  .finding-icon {
+    padding-top: 1px;
+    color: #f1c21b;
+  }
+
+  .finding.is-error .finding-icon {
+    color: #fa4d56;
+  }
+
+  .finding-icon :global(svg) {
+    fill: currentColor;
+  }
+
+  .finding-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .finding-line {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+
+  .finding-code {
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--cds-text-02, #c6c6c6);
+  }
+
+  .finding-message {
+    font-size: 11px;
+    color: var(--cds-text-01, #f4f4f4);
+  }
+
+  .finding-fix {
+    font-size: 10px;
+    color: var(--cds-text-05, #8d8d8d);
+  }
+
+  .finding-flag {
+    margin-left: auto;
+    flex-shrink: 0;
+    padding: 0 5px;
+    font-size: 9px;
+    line-height: 16px;
+    color: #fa4d56;
+    border: 1px solid rgba(250, 77, 86, 0.35);
+  }
+
+  /* -------------------------------------------------------------- statusbar */
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 0 12px;
+    font-size: 10px;
+    color: var(--cds-text-05, #8d8d8d);
+    background: #0f0f0f;
+    border-top: 1px solid var(--studio-divider);
+  }
+
+  .status-message {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .status-meta {
+    display: inline-flex;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  .status-sep {
+    color: #393939;
+  }
+
+  /* ----------------------------------------------------------------- modal */
+
+  .export-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 4px;
+  }
+
+  .destination {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .destination :global(.bx--form-item) {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--studio-border);
+    background: #161616;
+  }
+
+  .summary div {
+    display: grid;
+    grid-template-columns: 132px minmax(0, 1fr);
+    gap: 10px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--studio-divider);
+  }
+
+  .summary div:last-child {
+    border-bottom: 0;
+  }
+
+  .summary dt {
+    font-size: 10px;
+    color: var(--cds-text-05, #8d8d8d);
+  }
+
+  .summary dd {
+    font-size: 10px;
+    color: var(--cds-text-02, #c6c6c6);
+  }
+
+  .validation-value.valid {
+    color: #42be65;
+  }
+
+  .validation-value.valid_with_warnings {
+    color: #f1c21b;
+  }
+
+  .validation-value.invalid {
+    color: #fa4d56;
   }
 </style>

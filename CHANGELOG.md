@@ -16,6 +16,10 @@
 - **GUI (`apps/gui`)**: Tauri 2 + Svelte 5 + TypeScript visual editor featuring an asset browser, live preview canvas, filmstrip timeline, properties inspector, interactive diagnostics, undo/redo history, and reviewed export dialog. The desktop shell is a real Tauri app: the Rust core owns the session state and the export path, so "Verify & Write Package" now writes a real `ZIP_STORED` archive (or Magisk module) instead of only logging a result.
 - **Release automation (`.github/workflows/release.yml`)**: Pushing a `v*` tag builds smoke-tested `bootanimix` and `bootanimix-tui` release binaries for Linux (x86_64), Windows (x86_64), and macOS (arm64 + x86_64) and publishes them to a GitHub Release with SHA-256 checksums, together with native **BootAnimix Studio** installers (NSIS/MSI, `.app`/`.dmg`, `.deb`/`.rpm`/`.AppImage`) built on per-OS runners. macOS bundles are ad-hoc signed so Gatekeeper does not flag them as damaged.
 
+### Changed
+- Rebuilt BootAnimix Studio on IBM's **Carbon Design System** (`carbon-components-svelte`) with locally bundled IBM Plex type, replacing the previous ad-hoc dark dashboard styling. The shell now uses Carbon buttons, fields, selects, toggles, tabs, accordions, modal, notifications, and icons, pruned for production with `carbon-preprocess-svelte`. Carbon's CDN font declarations are stripped at build time so the desktop app makes no runtime font requests.
+- Added the new BootAnimix brand artwork under `apps/gui/brand/` and regenerated the complete Tauri desktop icon set (Windows `.ico`, macOS `.icns`, Linux PNGs, Microsoft Store logos) plus the studio favicon and header mark.
+
 ### Fixed
 - `bootanimix-tui` now handles `--help`/`-h` and `--version`/`-V` instead of treating them as a project path and opening the interactive TUI.
 

@@ -12,15 +12,34 @@ bootanimix/
 │   └── gui/                    # Studio session state & editing operations (no Tauri dependency)
 ├── apps/
 │   └── gui/                    # Svelte 5 + TypeScript visual editor (BootAnimix Studio)
-│       ├── src/                # Svelte components, canvas renderer, timeline, inspector
+│       ├── src/                # Carbon-based workspace, canvas renderer, timeline, inspector
 │       │   └── lib/bridge.ts   # IPC bridge to the Rust session
+│       ├── brand/              # Master square/circle brand artwork
 │       └── src-tauri/          # Tauri 2 shell (its own Cargo workspace)
 │           ├── src/lib.rs      # `#[tauri::command]` IPC surface
 │           ├── capabilities/   # Tauri v2 permission grants
-│           └── icons/          # Bundler icon set
+│           └── icons/          # Generated Windows/macOS/Linux icon set
 ├── docs/                       # Format matrix, compatibility notes, architecture, guides
 └── tests/fixtures/             # Provenance and synthetic fixture documentation
 ```
+
+### Studio design system
+
+The Studio frontend is built on IBM's Carbon Design System through
+`carbon-components-svelte` (Gray 100 theme). Layout, spacing, colour and form
+controls come from Carbon; the only product-specific styling is the app shell
+(three-pane workspace, preview stage, filmstrip) and the logo gradient.
+
+- **Typography:** IBM Plex Sans/Mono via `@fontsource`, bundled into the app.
+  Carbon's precompiled theme CSS contains `@font-face` rules pointing at IBM's
+  CDN; `stripRemoteCarbonFonts()` in `vite.config.ts` removes them so the Tauri
+  build never performs a runtime font request (the CSP only allows `'self'`).
+- **Production CSS:** `carbon-preprocess-svelte`'s `optimizeImports` and
+  `optimizeCss` keep only the Carbon styles the shell uses.
+- **Icons:** the master artwork lives in `apps/gui/brand/`. Regenerate every
+  platform icon with
+  `npx @tauri-apps/cli@2 icon brand/bootanimix-square-1024.png --output src-tauri/icons`,
+  then remove the generated `android/` and `ios/` folders (desktop-only target).
 
 ### Why the Tauri shell is a separate Cargo workspace
 

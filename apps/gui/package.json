@@ -11,12 +11,17 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
     "@tauri-apps/api": "^2.2.0",
-    "@tauri-apps/plugin-dialog": "^2.2.0"
+    "@tauri-apps/plugin-dialog": "^2.8.3",
+    "carbon-components-svelte": "^0.113.1",
+    "carbon-icons-svelte": "^13.17.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tauri-apps/cli": "^2.12.0",
+    "carbon-preprocess-svelte": "^0.11.57",
     "svelte": "^5.16.0",
     "svelte-check": "^4.1.0",
     "typescript": "^5.7.2",
