@@ -6,6 +6,10 @@
 2. **TUI (`bootanimix-tui`)** — Persistent interactive terminal workspace powered by Ratatui.
 3. **GUI (`apps/gui`)** — Visual desktop studio built with Tauri 2, Svelte 5, TypeScript, and IBM's [Carbon Design System](https://carbondesignsystem.com/) featuring an asset browser, playback preview canvas, filmstrip timeline, properties inspector, interactive diagnostics, undo/redo history, and Magisk module export. Typography is IBM Plex, bundled locally so the desktop app never fetches fonts at runtime.
 
+![BootAnimix Studio showing the parts browser, live device preview, properties inspector, and filmstrip timeline](docs/images/studio.png)
+
+*BootAnimix Studio: a three-part demo project with a live geometry-and-timing preview, inline fidelity warnings, and validation diagnostics.*
+
 ---
 
 ## Core Engineering Guarantees
