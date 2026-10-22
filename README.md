@@ -8,7 +8,9 @@
 
 ![BootAnimix Studio showing the parts browser, live device preview, properties inspector, and filmstrip timeline](docs/images/studio.png)
 
-*BootAnimix Studio: a three-part demo project with a live geometry-and-timing preview, inline fidelity warnings, and validation diagnostics.*
+*BootAnimix Studio with a three-part project open: parts browser, geometry-and-timing preview, properties inspector, filmstrip timeline, and inline validation diagnostics.*
+
+The studio launches with an empty session. Open a project folder created with `bootanimix import` (or any directory containing `project.bootanimix.json`) to load its parts and frames; nothing is generated or bundled for you.
 
 ---
 

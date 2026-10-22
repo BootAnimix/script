@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- BootAnimix Studio no longer launches with a hard-coded three-part sample animation. The Tauri session and the browser fallback now start with an empty `untitled` project, and the parts browser, preview stage, timeline, diagnostics, and export controls show an explicit empty state until a real project folder is opened. Save is disabled until a project directory is loaded.
+
 ## [3.5.0] - 2026-10-21
 
 ### Changed

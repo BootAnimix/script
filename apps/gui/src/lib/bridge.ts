@@ -33,70 +33,22 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
   return invoke<T>(cmd, args);
 }
 
-// Initial sample project used when launching the studio before opening a disk directory
-function createDefaultManifest(): ProjectManifest {
+// The studio starts with no project at all. Parts and frame references only
+// exist after the user opens a project directory, so the UI never shows
+// invented assets or a sample animation.
+function createEmptyManifest(): ProjectManifest {
   return {
     schema_version: 1,
-    name: 'pixel_monochrome_boot',
+    name: 'untitled',
     descriptor: {
       width: 1080,
       height: 2400,
-      fps: 60,
-      show_progress: true,
+      fps: 30,
+      show_progress: false,
       dynamic_colors: null,
-      parts: [
-        {
-          mode: { mode: 'play_interruptible' },
-          repeat: { kind: 'finite', count: 1 },
-          pause_frames: 6,
-          path: 'part0',
-          background_color: { r: 8, g: 10, b: 14 },
-          clock: null,
-        },
-        {
-          mode: { mode: 'fade_out', fade_frames: 12 },
-          repeat: { kind: 'infinite' },
-          pause_frames: 0,
-          path: 'part1',
-          background_color: { r: 8, g: 10, b: 14 },
-          clock: { x: 'c', y: -24 },
-        },
-        {
-          mode: { mode: 'play_to_completion' },
-          repeat: { kind: 'finite', count: 1 },
-          pause_frames: 10,
-          path: 'part2',
-          background_color: { r: 0, g: 0, b: 0 },
-          clock: null,
-        },
-      ],
+      parts: [],
     },
-    parts: [
-      {
-        name: 'part0',
-        frames: Array.from({ length: 8 }, (_, i) => ({
-          relative_path: `assets/part0/${String(i).padStart(5, '0')}.png`,
-          trim: { width: 540, height: 540, x: 270, y: 930 },
-        })),
-        audio_relative_path: null,
-      },
-      {
-        name: 'part1',
-        frames: Array.from({ length: 12 }, (_, i) => ({
-          relative_path: `assets/part1/${String(i).padStart(5, '0')}.png`,
-          trim: { width: 620, height: 620, x: 230, y: 890 },
-        })),
-        audio_relative_path: 'assets/part1/audio.wav',
-      },
-      {
-        name: 'part2',
-        frames: Array.from({ length: 6 }, (_, i) => ({
-          relative_path: `assets/part2/${String(i).padStart(5, '0')}.png`,
-          trim: null,
-        })),
-        audio_relative_path: null,
-      },
-    ],
+    parts: [],
     transforms: {
       resize: null,
       flatten_alpha_to: null,
@@ -106,13 +58,13 @@ function createDefaultManifest(): ProjectManifest {
       generate_trim_txt: false,
     },
     magisk: {
-      module_id: 'bootanimix_pixel_mono',
-      module_name: 'Pixel Monochrome Boot Animation',
-      version: 'v3.0.0',
-      version_code: 300,
-      author: 'XelXen',
-      description: 'Packaged with BootAnimix 3.0 Studio (ZIP_STORED verified)',
-      target_path: 'system/product/media/bootanimation.zip',
+      module_id: 'bootanimix_custom',
+      module_name: 'Custom Boot Animation',
+      version: 'v1.0.0',
+      version_code: 1,
+      author: 'BootAnimix',
+      description: 'Custom Android boot animation packaged by BootAnimix',
+      target_path: 'system/media/bootanimation.zip',
     },
     source_archive: null,
     import_warnings: [],
@@ -324,7 +276,7 @@ function computeLocalSchedule(
 }
 
 export class StudioBridge {
-  private current: ProjectManifest = createDefaultManifest();
+  private current: ProjectManifest = createEmptyManifest();
   private undoStack: ProjectManifest[] = [];
   private redoStack: ProjectManifest[] = [];
   private projectDir: string | null = null;

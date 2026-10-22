@@ -1,9 +1,8 @@
 use bootanimix_core::{
     build_playback_schedule, build_project_to_archive, export_magisk_module, validate_project,
-    AnimationDescriptor, BuildReport, EditableProjectSession, FrameAssetRef, MagiskExportReport,
-    MagiskExportSettings, PartDeclaration, PlaybackMode, PlaybackSchedule, ProjectManifest,
-    ProjectPart, RepeatCount, RgbColor, ScheduleOptions, TransformSettings, ValidationReport,
-    CURRENT_SCHEMA_VERSION,
+    AnimationDescriptor, BuildReport, EditableProjectSession, MagiskExportReport,
+    MagiskExportSettings, PlaybackSchedule, ProjectManifest, RepeatCount, ScheduleOptions,
+    TransformSettings, ValidationReport, CURRENT_SCHEMA_VERSION,
 };
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -32,58 +31,29 @@ impl Default for GuiBackendState {
 }
 
 impl GuiBackendState {
+    /// A blank studio session.
+    ///
+    /// The studio starts with no project: no parts, no frame references and an
+    /// empty playback schedule. Assets only ever appear after the user opens a
+    /// real project directory, so the UI never displays invented frames.
     pub fn new_default() -> Self {
         let initial = ProjectManifest {
             schema_version: CURRENT_SCHEMA_VERSION,
-            name: "pixel_monochrome_boot".to_string(),
+            name: "untitled".to_string(),
             descriptor: AnimationDescriptor {
                 width: 1080,
                 height: 2400,
-                fps: 60,
-                show_progress: true,
+                fps: 30,
+                show_progress: false,
                 dynamic_colors: None,
-                parts: vec![
-                    PartDeclaration {
-                        mode: PlaybackMode::PlayInterruptible,
-                        repeat: RepeatCount::Finite(1),
-                        pause_frames: 6,
-                        path: "part0".to_string(),
-                        background_color: Some(RgbColor::new(8, 10, 14)),
-                        clock: None,
-                    },
-                    PartDeclaration {
-                        mode: PlaybackMode::FadeOut(12),
-                        repeat: RepeatCount::Infinite,
-                        pause_frames: 0,
-                        path: "part1".to_string(),
-                        background_color: Some(RgbColor::new(8, 10, 14)),
-                        clock: None,
-                    },
-                ],
-                preserved_directives: vec![],
+                parts: Vec::new(),
+                preserved_directives: Vec::new(),
             },
-            parts: vec![
-                ProjectPart {
-                    name: "part0".to_string(),
-                    frames: vec![FrameAssetRef {
-                        relative_path: "assets/part0/00000.png".to_string(),
-                        trim: None,
-                    }],
-                    audio_relative_path: None,
-                },
-                ProjectPart {
-                    name: "part1".to_string(),
-                    frames: vec![FrameAssetRef {
-                        relative_path: "assets/part1/00000.png".to_string(),
-                        trim: None,
-                    }],
-                    audio_relative_path: None,
-                },
-            ],
+            parts: Vec::new(),
             transforms: TransformSettings::default(),
             magisk: MagiskExportSettings::default(),
             source_archive: None,
-            import_warnings: vec![],
+            import_warnings: Vec::new(),
         };
         Self {
             project_dir: None,
@@ -115,7 +85,13 @@ impl GuiBackendState {
                         .map(|p| (p.name.clone(), p.frames.len()))
                         .collect(),
                     finite_duration_seconds: None,
-                    has_infinite_loop: true,
+                    has_infinite_loop: self
+                        .session
+                        .current
+                        .descriptor
+                        .parts
+                        .iter()
+                        .any(|p| matches!(p.repeat, RepeatCount::Infinite)),
                 },
                 Some(self.session.current.descriptor.clone()),
             )
@@ -245,6 +221,19 @@ mod tests {
     use bootanimix_core::{encode_solid_png, import_frame_sequence_dir};
 
     #[test]
+    fn studio_starts_without_a_sample_project() {
+        let state = GuiBackendState::new_default();
+        let snap = state.snapshot(None).unwrap();
+        assert_eq!(snap.manifest.name, "untitled");
+        assert!(snap.manifest.parts.is_empty());
+        assert!(snap.manifest.descriptor.parts.is_empty());
+        assert!(snap.schedule.frames.is_empty());
+        assert_eq!(snap.validation.performance.total_frames, 0);
+        assert_eq!(snap.project_dir, None);
+        assert!(!snap.dirty);
+    }
+
+    #[test]
     fn gui_backend_commands_share_core_and_support_undo_redo_and_build() {
         let dir = tempfile::tempdir().unwrap();
         let frames_dir = dir.path().join("frames");
@@ -275,6 +264,13 @@ mod tests {
         let out_zip = dir.path().join("gui_built.zip");
         let rep = state.build_archive(&out_zip).unwrap();
         assert!(rep.invariants_verified);
+        assert_eq!(rep.frame_count, 1);
+
+        // The Magisk export path wraps the same verified build.
+        let module_zip = dir.path().join("gui_module.zip");
+        let export = state.export_magisk(&module_zip).unwrap();
+        assert!(export.inner_stored_verified);
+        assert!(module_zip.is_file());
     }
 
     #[test]

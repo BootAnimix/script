@@ -66,7 +66,7 @@
   let exportDestination = $state('dist/bootanimation.zip');
   let exporting = $state(false);
   let buildResult = $state<{ kind: 'success' | 'error'; title: string; text: string } | null>(null);
-  let statusBanner = $state('Ready. Archive storage mode is verified on every build.');
+  let statusBanner = $state('No project open. Open a project folder to load parts and frames.');
   let newPartName = $state('');
   let dockTab = $state(0);
 
@@ -79,6 +79,7 @@
   let activeProjectPart = $derived(snapshot?.manifest.parts[selectedPartIdx]);
   let activeFrame = $derived<ScheduledFrame | undefined>(snapshot?.schedule.frames[currentTick]);
   let totalFrames = $derived(snapshot?.validation.performance.total_frames ?? 0);
+  let hasParts = $derived((snapshot?.manifest.parts.length ?? 0) > 0);
   let diagnostics = $derived(snapshot?.validation.diagnostics ?? []);
   let blockingCount = $derived(diagnostics.filter((d) => d.blocks_export || d.severity === 'error').length);
   let warningCount = $derived(diagnostics.filter((d) => d.severity === 'warning' && !d.blocks_export).length);
@@ -675,14 +676,17 @@
 
       <div class="header-actions">
         <Button kind="ghost" size="small" disabled={!bridge.isDesktop} onclick={handleOpenProject} icon={FolderOpen}>Open</Button>
-        <Button kind="ghost" size="small" onclick={handleSaveProject} icon={Save}>Save</Button>
+        <Button kind="ghost" size="small" disabled={!snapshot.project_dir} onclick={handleSaveProject} icon={Save}>Save</Button>
         <span class="divider" aria-hidden="true"></span>
         <Button kind="ghost" size="small" iconDescription="Undo" disabled={!snapshot.can_undo} onclick={handleUndo} icon={Undo}></Button>
         <Button kind="ghost" size="small" iconDescription="Redo" disabled={!snapshot.can_redo} onclick={handleRedo} icon={Redo}></Button>
         <span class="divider" aria-hidden="true"></span>
 
-        <span class="validation-chip {snapshot.validation.outcome}">
-          {#if snapshot.validation.outcome === 'valid'}
+        <span class="validation-chip {hasParts ? snapshot.validation.outcome : 'empty'}">
+          {#if !hasParts}
+            <Information size={16} />
+            <span>No project</span>
+          {:else if snapshot.validation.outcome === 'valid'}
             <CheckmarkFilled size={16} />
             <span>Valid</span>
           {:else if snapshot.validation.outcome === 'valid_with_warnings'}
@@ -694,7 +698,15 @@
           {/if}
         </span>
 
-        <Button kind="primary" size="small" onclick={openExport} icon={DocumentExport}>Build &amp; export</Button>
+        <Button
+          kind="primary"
+          size="small"
+          disabled={totalFrames === 0}
+          onclick={openExport}
+          icon={DocumentExport}
+        >
+          Build &amp; export
+        </Button>
       </div>
     </header>
 
@@ -708,6 +720,9 @@
         </div>
 
         <div class="part-list">
+          {#if !hasParts}
+            <p class="empty">No parts yet. Open a project folder to load its animation.</p>
+          {/if}
           {#each snapshot.manifest.descriptor.parts as part, idx (part.path + idx)}
             {@const frames = snapshot.manifest.parts[idx]?.frames.length ?? 0}
             <button
@@ -767,8 +782,12 @@
         </div>
 
         <div class="frame-list">
-          {#if filteredFrames.length === 0}
-            <p class="empty">No frames match “{assetFilter}”.</p>
+          {#if !activeProjectPart}
+            <p class="empty">No part selected.</p>
+          {:else if filteredFrames.length === 0}
+            <p class="empty">
+              {partFrameCount === 0 ? 'This part has no frames yet.' : `No frames match “${assetFilter}”.`}
+            </p>
           {:else}
             {#each filteredFrames as { frame, index } (frame.relative_path + index)}
               <button
@@ -833,18 +852,39 @@
         </div>
 
         <div class="stage" bind:this={stageEl}>
-          <div class="device" style="width: {displayWidth + 24}px">
-            <canvas
-              bind:this={canvasEl}
-              width={canvasWidth}
-              height={CANVAS_HEIGHT}
-              style="width: {displayWidth}px; height: {displayHeight}px"
-            ></canvas>
-          </div>
-          <p class="stage-note">
-            <Information size={14} />
-            Geometry and timing preview. Frame pixels stay on disk until export.
-          </p>
+          {#if scheduleLength === 0}
+            <div class="stage-empty">
+              <span class="stage-empty-icon"><ImageIcon size={24} /></span>
+              <p class="stage-empty-title">Nothing to preview</p>
+              <p class="stage-empty-body">
+                {hasParts
+                  ? 'This project has no frames yet.'
+                  : 'Open a project folder containing project.bootanimix.json to load its parts and frames.'}
+              </p>
+              {#if bridge.isDesktop}
+                <Button kind="tertiary" size="small" icon={FolderOpen} onclick={handleOpenProject}>
+                  Open project
+                </Button>
+              {:else}
+                <p class="hint stage-empty-hint">
+                  Opening a project from disk requires the desktop app.
+                </p>
+              {/if}
+            </div>
+          {:else}
+            <div class="device" style="width: {displayWidth + 24}px">
+              <canvas
+                bind:this={canvasEl}
+                width={canvasWidth}
+                height={CANVAS_HEIGHT}
+                style="width: {displayWidth}px; height: {displayHeight}px"
+              ></canvas>
+            </div>
+            <p class="stage-note">
+              <Information size={14} />
+              Geometry and timing preview. Frame pixels stay on disk until export.
+            </p>
+          {/if}
         </div>
 
         <div class="transport">
@@ -853,6 +893,7 @@
             size="small"
             icon={ChevronLeft}
             iconDescription="Previous frame"
+            disabled={scheduleLength === 0}
             onclick={() => stepFrame(-1)}
           ></Button>
           <Button
@@ -860,6 +901,7 @@
             size="small"
             icon={isPlaying ? Pause : Play}
             iconDescription={isPlaying ? 'Pause preview' : 'Play preview'}
+            disabled={scheduleLength === 0}
             onclick={togglePlayback}
           ></Button>
           <Button
@@ -867,6 +909,7 @@
             size="small"
             icon={ChevronRight}
             iconDescription="Next frame"
+            disabled={scheduleLength === 0}
             onclick={() => stepFrame(1)}
           ></Button>
 
@@ -1091,7 +1134,15 @@
                 disabled={selectedFrameIdx >= Math.max(0, partFrameCount - 1)}
                 onclick={() => moveSelectedFrame(1)}
               ></Button>
-              <Button kind="ghost" size="small" onclick={duplicateSelectedFrame} icon={Copy}>Duplicate</Button>
+              <Button
+                kind="ghost"
+                size="small"
+                disabled={partFrameCount === 0}
+                onclick={duplicateSelectedFrame}
+                icon={Copy}
+              >
+                Duplicate
+              </Button>
               <Button kind="ghost" size="small" disabled={partFrameCount <= 1} onclick={removeSelectedFrame} icon={TrashCan}>Remove</Button>
             </div>
 
@@ -1118,7 +1169,17 @@
 
           <TabContent>
             <div class="diagnostics">
-            {#if diagnostics.length === 0}
+            {#if totalFrames === 0}
+              <div class="clean-state neutral">
+                <Information size={20} />
+                <div>
+                  <p class="clean-title">Nothing to validate yet</p>
+                  <p class="hint">
+                    Open a project folder to check its archive structure and desc.txt semantics.
+                  </p>
+                </div>
+              </div>
+            {:else if diagnostics.length === 0}
               <div class="clean-state">
                 <CheckmarkFilled size={20} />
                 <div>
@@ -1181,7 +1242,7 @@
       modalLabel="Artifact"
       primaryButtonText="Verify and write"
       secondaryButtonText="Cancel"
-      primaryButtonDisabled={snapshot.validation.outcome === 'invalid'}
+      primaryButtonDisabled={snapshot.validation.outcome === 'invalid' || totalFrames === 0}
       primaryButtonLoading={exporting}
       on:click:button--primary={executeReviewedExport}
       on:click:button--secondary={() => (showExportModal = false)}
@@ -1421,6 +1482,12 @@
     color: #fa4d56;
     background: rgba(250, 77, 86, 0.1);
     border-color: rgba(250, 77, 86, 0.3);
+  }
+
+  .validation-chip.empty {
+    color: var(--cds-text-04, #a8a8a8);
+    background: #262626;
+    border-color: #393939;
   }
 
   /* ------------------------------------------------------------- workspace */
@@ -1714,6 +1781,45 @@
     gap: 6px;
     font-size: 10px;
     color: var(--cds-text-03, #6f6f6f);
+  }
+
+  .stage-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    max-width: 320px;
+    padding: 20px 24px;
+    text-align: center;
+    border: 1px dashed #393939;
+    background: rgba(22, 22, 22, 0.72);
+  }
+
+  .stage-empty-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin-bottom: 2px;
+    color: var(--cds-text-04, #a8a8a8);
+    border: 1px solid #393939;
+  }
+
+  .stage-empty-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cds-text-01, #f4f4f4);
+  }
+
+  .stage-empty-body {
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--cds-text-05, #8d8d8d);
+  }
+
+  .stage-empty-hint {
+    margin-top: 2px;
   }
 
   @media (max-width: 1180px) {
@@ -2067,9 +2173,17 @@
     color: #42be65;
   }
 
+  .clean-state.neutral {
+    color: var(--cds-text-04, #a8a8a8);
+  }
+
   .clean-title {
     font-size: 12px;
     color: #42be65;
+  }
+
+  .clean-state.neutral .clean-title {
+    color: var(--cds-text-02, #c6c6c6);
   }
 
   .finding {
