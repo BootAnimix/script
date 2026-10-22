@@ -1,6 +1,6 @@
-# BootAnimix 3.0
+# BootAnimix 3.5.1
 
-**BootAnimix 3.0** is a local-first, cross-platform Android boot-animation inspection, validation, editing, preview, and packaging suite built around a shared Rust core (`bootanimix-core`) with three first-class interfaces:
+**BootAnimix 3.5.1** is a local-first, cross-platform Android boot-animation inspection, validation, editing, preview, and packaging suite built around a shared Rust core (`bootanimix-core`) with three first-class interfaces:
 
 1. **CLI (`bootanimix`)** — Automation-friendly static-argument command-line interface with human and `--json` output.
 2. **TUI (`bootanimix-tui`)** — Persistent interactive terminal workspace powered by Ratatui.
@@ -66,7 +66,7 @@ npm run tauri build
 
 ## Releases
 
-Pushing a version tag (`git tag v3.0.0 && git push origin v3.0.0`) triggers [.github/workflows/release.yml](.github/workflows/release.yml), which runs the test suite and publishes two product lines to the same GitHub Release:
+Pushing a version tag (`git tag v3.5.1 && git push origin v3.5.1`) triggers [.github/workflows/release.yml](.github/workflows/release.yml), which runs the test suite and publishes two product lines to the same GitHub Release:
 
 - **`bootanimix` (CLI) and `bootanimix-tui` (TUI)** — smoke-tested binaries for Linux (x86_64), Windows (x86_64), and macOS (Apple Silicon + Intel), packaged as `tar.gz`/`zip` with SHA-256 checksums.
 - **BootAnimix Studio (Tauri 2 desktop app)** — native installers built on per-OS runners: NSIS `.exe` + `.msi` on Windows, `.app` + `.dmg` on macOS (Apple Silicon and Intel), and `.deb` + `.rpm` + `.AppImage` on Linux.

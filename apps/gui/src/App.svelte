@@ -664,7 +664,7 @@
         <img class="brand-mark" src="/logo-128.png" alt="" width="26" height="26" />
         <span class="brand-name">BootAnimix</span>
         <span class="brand-product">Studio</span>
-        <span class="version mono">3.0</span>
+        <span class="version mono">3.5.1</span>
       </div>
 
       <div class="project-id">

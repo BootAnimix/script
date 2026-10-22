@@ -1,4 +1,4 @@
-# BootAnimix 3.0 User Guide & Troubleshooting
+# BootAnimix 3.5.1 User Guide & Troubleshooting
 
 ## 1. Importing & Creating a Project
 

@@ -442,7 +442,7 @@ impl TuiApp {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(" BootAnimix 3.0 Terminal Workspace "),
+                    .title(" BootAnimix 3.5.1 Terminal Workspace "),
             )
             .select(self.tab_index)
             .highlight_style(

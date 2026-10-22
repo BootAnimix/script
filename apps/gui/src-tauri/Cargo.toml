@@ -1,10 +1,10 @@
 [package]
 name = "bootanimix-studio"
-version = "3.5.0"
+version = "3.5.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/BootAnimix/script"
-description = "BootAnimix 3.0 Studio — Tauri 2 desktop shell for the visual boot animation editor"
+description = "BootAnimix 3.5.1 Studio — Tauri 2 desktop shell for the visual boot animation editor"
 
 # This crate is deliberately its own workspace root. The Tauri runtime pulls in
 # platform webview toolchains (webkit2gtk on Linux) that the CLI/TUI crates

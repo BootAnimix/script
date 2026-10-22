@@ -1,6 +1,6 @@
-# BootAnimix 3.0 Architecture
+# BootAnimix 3.5.1 Architecture
 
-BootAnimix 3.0 is organized around a single shared Rust library (`bootanimix-core`) consumed by three first-class interfaces:
+BootAnimix 3.5.1 is organized around a single shared Rust library (`bootanimix-core`) consumed by three first-class interfaces:
 
 ```text
 bootanimix/

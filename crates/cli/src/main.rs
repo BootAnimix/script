@@ -13,7 +13,7 @@ use std::process::ExitCode;
 #[command(
     name = "bootanimix",
     version,
-    about = "BootAnimix 3.0 — Inspect, validate, import, edit, preview, and package Android boot animations"
+    about = "BootAnimix 3.5.1 — Inspect, validate, import, edit, preview, and package Android boot animations"
 )]
 struct Cli {
     /// Emit machine-readable JSON output
@@ -451,7 +451,7 @@ fn run_cli(cli: Cli) -> Result<ExitCode, String> {
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&ff).unwrap());
             } else {
-                println!("BootAnimix 3.0 Doctor");
+                println!("BootAnimix 3.5.1 Doctor");
                 println!(
                     "Core schema version: {}",
                     bootanimix_core::CURRENT_SCHEMA_VERSION

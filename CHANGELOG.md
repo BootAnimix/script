@@ -1,6 +1,9 @@
 # Changelog
 
-## [Unreleased]
+## [3.5.1] - 2026-10-21
+
+### Changed
+- Product branding and every declared version now report **3.5.1**: the README and docs, the Studio header and window title, the CLI about/doctor output, the TUI banner, and the Cargo/npm/Tauri package metadata.
 
 ### Fixed
 - BootAnimix Studio no longer launches with a hard-coded three-part sample animation. The Tauri session and the browser fallback now start with an empty `untitled` project, and the parts browser, preview stage, timeline, diagnostics, and export controls show an explicit empty state until a real project folder is opened. Save is disabled until a project directory is loaded.

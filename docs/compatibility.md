@@ -21,7 +21,7 @@ Android's `bootanimation` binary (`frameworks/base/cmds/bootanimation`) has a de
   - 16-bit per channel PNGs or unusual interlaced PNGs can fail or render improperly on some older Skia/OpenGL ES decoders; warn when encountered.
 - **JPEG:**
   - Supported by AOSP's decoder in practice and used by many older animations (`main.py` in 2.x only output `.jpg`), but introduces lossy compression artifacts on flat logos/text and does not support transparency.
-  - BootAnimix 3.0 keeps source frames in their original format by default and uses PNG as the default when generating new frames.
+  - BootAnimix 3.5.1 keeps source frames in their original format by default and uses PNG as the default when generating new frames.
 
 ## 3. Part Types & Timing (`p`, `c`, `f`, `$SYSTEM`)
 

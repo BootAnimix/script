@@ -2,9 +2,9 @@
 
 Reference consulted: AOSP `platform/frameworks/base/+/master/cmds/bootanimation/FORMAT.md` and Magisk module specification (`https://topjohnwu.github.io/Magisk/guides.html`).
 
-## Format Feature Matrix (BootAnimix 3.0 — October 2026)
+## Format Feature Matrix (BootAnimix 3.5.1 — October 2026)
 
-| Feature | AOSP Reference | BootAnimix 3.0 Status | Parser / Serializer | Preview Engine | Validator / Tests | Notes & Compatibility |
+| Feature | AOSP Reference | BootAnimix 3.5.1 Status | Parser / Serializer | Preview Engine | Validator / Tests | Notes & Compatibility |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `bootanimation.zip` `ZIP_STORED` (`0`) | Mandatory (`zip -0qry`) | **1. Supported & Tested** | Enforced on write; reopened & verified | N/A | `BA-ARC-001`, unit + proptest | Any compressed entry fails build verification and never overwrites previous output. |
 | Header `WIDTH HEIGHT FPS` | Mandatory 1st line | **1. Supported & Tested** | Parsed & serialized with trailing `\n` | Sets canvas aspect & tick rate | `BA-DSC-001`, `BA-DSC-002` | Rejects `0` or >`16384` dimensions. |
